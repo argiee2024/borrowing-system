@@ -106,22 +106,29 @@ const Storage = {
    */
   async loadFromCloud() {
     if (!GOOGLE_SHEET_URL) return null;
+    console.log("Attempting cloud sync...");
     try {
-      // Use a timestamp to prevent cached responses
       const response = await fetch(`${GOOGLE_SHEET_URL}?action=getAll&t=${Date.now()}`);
+      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+      
       const text = await response.text();
-      const result = JSON.parse(text);
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        console.error("Server returned non-JSON response:", text);
+        return null;
+      }
       
       if (result.success && result.data) {
         const cloudData = result.data;
         
-        // Critical Safety: Don't overwrite local data with empty cloud data if cloud data is invalid
         if (!cloudData.items || !Array.isArray(cloudData.items)) {
-          console.warn("Cloud data format invalid, skipping update.");
+          console.warn("Cloud data invalid:", cloudData);
           return appData;
         }
 
-        // Merge cloud data into application state
+        // Deep merge data
         appData.users = Array.isArray(cloudData.users) ? cloudData.users : appData.users;
         appData.items = cloudData.items;
         appData.records = Array.isArray(cloudData.records) ? cloudData.records : appData.records;
@@ -132,23 +139,24 @@ const Storage = {
           appData.settings = Array.isArray(cloudData.settings) ? cloudData.settings[0] : cloudData.settings;
         }
 
-        window.hasLoadedFromCloud = true; // Mark as connected
+        window.hasLoadedFromCloud = true;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
         
-        // Notification for user
-        if (appData.requests && appData.requests.filter(r => r.status === 'pending').length > 0) {
-          console.log("New requests found!");
-        }
+        const pendingCount = (appData.requests || []).filter(r => r.status === 'pending').length;
+        showToast(pendingCount > 0 ? `Synced! ${pendingCount} requests found.` : 'Cloud Synced', 'success');
 
-        // Refresh UI if we are in a relevant view
         if (typeof switchView === 'function') switchView(currentView);
-        
         return appData;
+      } else {
+        console.error("Cloud error:", result.error);
+        return null;
       }
     } catch (e) {
-      console.error('Cloud load failed', e);
+      console.error('Cloud load failed:', e);
+      // Only show error toast occasionally or if it's the first load
+      if (!window.hasLoadedFromCloud) showToast('Cloud connection failed. Check internet.', 'danger');
+      return null;
     }
-    return null;
   },
 
   /**
@@ -188,65 +196,6 @@ const Storage = {
     }
   },
 
-
-  /**
-   * Import data from Excel file using SheetJS (XLSX global)
-   */
-  async importFromExcel(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
-          
-          const result = { ...DEFAULT_DATA };
-          
-          if (workbook.SheetNames.includes('Users')) {
-            result.users = XLSX.utils.sheet_to_json(workbook.Sheets['Users']);
-          }
-          if (workbook.SheetNames.includes('Items')) {
-            result.items = XLSX.utils.sheet_to_json(workbook.Sheets['Items']);
-          }
-          if (workbook.SheetNames.includes('Records')) {
-            result.records = XLSX.utils.sheet_to_json(workbook.Sheets['Records']);
-          }
-          if (workbook.SheetNames.includes('Settings')) {
-            const settingsArr = XLSX.utils.sheet_to_json(workbook.Sheets['Settings']);
-            if (settingsArr.length > 0) result.settings = settingsArr[0];
-          }
-
-          this.save(result);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  },
-
-  /**
-   * Export data to Excel file using SheetJS
-   */
-  exportToExcel(data) {
-    const workbook = XLSX.utils.book_new();
-    
-    const usersSheet = XLSX.utils.json_to_sheet(data.users);
-    XLSX.utils.book_append_sheet(workbook, usersSheet, 'Users');
-    
-    const itemsSheet = XLSX.utils.json_to_sheet(data.items);
-    XLSX.utils.book_append_sheet(workbook, itemsSheet, 'Items');
-    
-    const recordsSheet = XLSX.utils.json_to_sheet(data.records);
-    XLSX.utils.book_append_sheet(workbook, recordsSheet, 'Records');
-    
-    const settingsSheet = XLSX.utils.json_to_sheet([data.settings]);
-    XLSX.utils.book_append_sheet(workbook, settingsSheet, 'Settings');
-    
-    XLSX.writeFile(workbook, `IBS_backup_${new Date().toISOString().split('T')[0]}.xlsx`);
-  }
 };
 
 // --- App State ---
@@ -1352,57 +1301,6 @@ const renderTransactions = () => {
   }
 };
 
-const renderImportExport = () => {
-  const mainView = document.getElementById('main-view');
-  mainView.innerHTML = `
-    <header style="margin-bottom: 2rem;">
-      <h1 style="font-size: 2rem; font-weight: 800;">Data Management</h1>
-      <p style="color: var(--text-muted);">Import or Export your Excel "Database".</p>
-    </header>
-
-    <div class="grid">
-      <div class="card">
-        <h2 style="margin-bottom: 1.5rem;">📥 Import Data</h2>
-        <div class="import-area" id="drop-zone">
-          <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
-          <p style="font-weight: 600;">Click to upload or drag & drop</p>
-          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Excel files only (.xlsx)</p>
-          <input type="file" id="file-input" hidden accept=".xlsx" />
-        </div>
-      </div>
-
-      <div class="card">
-        <h2 style="margin-bottom: 1.5rem;">📤 Export Data</h2>
-        <p style="color: var(--text-muted); margin-bottom: 2rem;">Download your current data as an Excel file to save changes or keep a backup.</p>
-        <button class="btn btn-primary" id="export-btn" style="width: 100%; justify-content: center; padding: 1rem;">
-          Download Excel Backup
-        </button>
-      </div>
-    </div>
-  `;
-
-  // Setup Event Listeners for this view
-  const dropZone = document.getElementById('drop-zone');
-  const fileInput = document.getElementById('file-input');
-  const exportBtn = document.getElementById('export-btn');
-
-  dropZone.onclick = () => fileInput.click();
-  fileInput.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      try {
-        appData = await Storage.importFromExcel(file);
-        // alert('Data imported successfully!');
-        switchView('dashboard');
-      } catch (err) {
-        alert('Error importing data: ' + err.message);
-      }
-    }
-  };
-
-  exportBtn.onclick = () => Storage.exportToExcel(appData);
-};
-
 const renderSettings = () => {
   const mainView = document.getElementById('main-view');
   mainView.innerHTML = `
@@ -1543,15 +1441,24 @@ const renderRequests = () => {
           </tr>
         </thead>
         <tbody>
-          ${(appData.requests || []).filter(req => req.status === 'pending').sort((a,b) => b.id - a.id).map(req => {
-            const reqItems = JSON.parse(req.items || '[]');
-            const itemsList = reqItems.map(i => `• ${i.name} (${i.qty})`).join('<br>');
+          ${(appData.requests || []).filter(req => req.status === 'pending').sort((a,b) => b.id > a.id ? -1 : 1).map(req => {
+            let itemsList = req.items || '';
+            try {
+              const parsed = JSON.parse(req.items);
+              if (Array.isArray(parsed)) {
+                itemsList = parsed.map(i => `• ${i.name} (${i.qty})`).join('<br>');
+              }
+            } catch(e) {
+              // Already human-readable or plain string
+              itemsList = (req.items || '').split(', ').map(i => `• ${i}`).join('<br>');
+            }
+
             return `
               <tr>
-                <td>${new Date(parseInt(req.id)).toLocaleDateString()}</td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">${req.created_at || 'N/A'}</td>
                 <td style="font-weight: 600;">${req.full_name}</td>
-                <td>${req.office}</td>
-                <td style="font-size: 0.85rem; color: var(--text-muted);">${itemsList}</td>
+                <td><span class="badge" style="background: var(--primary-soft); color: var(--primary);">${req.office}</span></td>
+                <td style="font-size: 0.85rem;">${itemsList}</td>
                 <td>${req.purpose}</td>
                 <td>
                   <div style="display: flex; gap: 0.5rem;">
@@ -1655,7 +1562,6 @@ const switchView = (view) => {
     case 'system-users': renderSystemUsers(); break;
     case 'transactions': renderTransactions(); break;
     case 'requests': renderRequests(); break;
-    case 'import-export': renderImportExport(); break;
     case 'settings': renderSettings(); break;
     default: mainView.innerHTML = `<h1>View ${view} coming soon...</h1>`;
   }
@@ -1676,9 +1582,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Try to restore from cloud on startup
-  Storage.loadFromCloud().then(success => {
-    if (success) showToast('System Connected to Cloud', 'success');
-  });
+  Storage.loadFromCloud();
 
   // Real-time Auto-refresh (Every 15 seconds)
   setInterval(() => {
@@ -1731,17 +1635,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initial load
   switchView('dashboard');
 
-  // Sync from Google Sheets on load (background)
-  if (GOOGLE_SHEET_URL) {
-    Storage.loadFromCloud().then(cloudData => {
-      if (cloudData) {
-        appData = cloudData;
-        switchView(currentView);
-        console.log('Loaded data from Google Sheets');
-        showToast('Synced with Google Sheets', 'success');
-      }
-    });
-  }
+  // Remove redundant sync block (already handled in DOMContentLoaded)
   
   // Global Click Handlers
   document.addEventListener('click', (e) => {
