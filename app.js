@@ -137,38 +137,18 @@ const Storage = {
   },
 
   /**
-   * Sync data to Google Sheets (background via hidden form)
+   * Sync data to Google Sheets (Direct Fetch method)
    */
-  syncToCloud(data) {
+  async syncToCloud(data) {
     if (!GOOGLE_SHEET_URL) return;
     
-    // Safety Lock: Only block sync if local is empty AND we haven't loaded from cloud.
-    // If you have added items, we should definitely try to sync them.
+    // Safety Lock
     if (!window.hasLoadedFromCloud && data.items.length === 0) {
-      console.warn("Sync blocked: System is waiting for cloud connection.");
+      console.warn("Sync blocked: Waiting for cloud connection.");
       return;
     }
 
-    // Create hidden iframe if not exists
-    let iframe = document.getElementById('gsheet_iframe');
-    if (!iframe) {
-      iframe = document.createElement('iframe');
-      iframe.name = 'gsheet_iframe';
-      iframe.id = 'gsheet_iframe';
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-    }
-
-    // Create form and submit to Google Sheets
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = GOOGLE_SHEET_URL;
-    form.target = 'gsheet_iframe';
-
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'data';
-    input.value = JSON.stringify({
+    const payload = {
       action: 'saveAll',
       users: data.users || [],
       items: data.items || [],
@@ -176,15 +156,21 @@ const Storage = {
       activity: (data.activity || []).slice(0, 50),
       settings: data.settings || DEFAULT_DATA.settings,
       requests: data.requests || []
-    });
-    form.appendChild(input);
+    };
 
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-
-    console.log('Syncing to Google Sheets...');
-    showToast('Syncing to Google Sheets...', 'success');
+    try {
+      // Using 'no-cors' for Google Apps Script POST
+      await fetch(GOOGLE_SHEET_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      console.log("Cloud sync sent successfully.");
+    } catch (e) {
+      console.error("Cloud sync error:", e);
+      showToast('Sync connection lost. Check internet.', 'danger');
+    }
   },
 
   /**
