@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Item - IBS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2e7d32;
+            --primary-dark: #1b5e20;
+            --primary-soft: #e8f5e9;
+            --background: #f1f8e9;
+            --surface: #ffffff;
+            --text: #1a1a1a;
+            --text-muted: #666666;
+            --border: #e0e0e0;
+            --danger: #d32f2f;
+            --shadow: 0 10px 25px rgba(0,0,0,0.05);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--background); color: var(--text); padding: 1.5rem; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+
+        .request-card {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header img { width: 60px; margin-bottom: 1rem; }
+        .header h1 { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+        .header p { color: var(--text-muted); font-size: 0.9rem; }
+
+        .form-group { margin-bottom: 1.25rem; }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-muted); }
+        .form-input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            outline: none;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+        .form-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+            margin-top: 1rem;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        .btn-primary:active { transform: translateY(0); }
+
+        #success-message { display: none; text-align: center; }
+        #success-message h2 { color: var(--primary); margin-bottom: 1rem; }
+        
+        .item-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .item-row select { flex: 2; }
+        .item-row input { flex: 1; }
+
+        .loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8); display: none; justify-content: center; align-items: center;
+            z-index: 100; font-weight: 700; color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loading" id="loader">Sending Request...</div>
+
+    <div class="request-card" id="form-container">
+        <div class="header">
+            <img src="logo.png" alt="Logo">
+            <h1>Item Request Form</h1>
+            <p>Borrowing System - Provincial Government</p>
+        </div>
+
+        <form id="request-form">
+            <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input type="text" class="form-input" name="full_name" placeholder="Enter your full name" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Office / Department</label>
+                <input type="text" class="form-input" name="office" placeholder="e.g. Finance, GSO" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Items to Borrow</label>
+                <div id="items-container">
+                    <div class="item-row">
+                        <select class="form-input item-select" name="item_1" required>
+                            <option value="">Select Item...</option>
+                        </select>
+                        <input type="number" class="form-input" name="qty_1" value="1" min="1" required>
+                    </div>
+                </div>
+                <button type="button" id="add-item-btn" style="background: none; border: none; color: var(--primary); font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-top: 0.5rem;">+ Add Another Item</button>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Purpose</label>
+                <input type="text" class="form-input" name="purpose" placeholder="What will you use it for?" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Return Date (Expected)</label>
+                <input type="date" class="form-input" name="due_date" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Submit Request</button>
+        </form>
+    </div>
+
+    <div class="request-card" id="success-message">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">✅</div>
+        <h2>Request Submitted!</h2>
+        <p>Your request has been sent to the Admin for approval. Please wait for confirmation.</p>
+        <button class="btn btn-primary" onclick="location.reload()">New Request</button>
+    </div>
+
+    <script>
+        const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyf-kKwuEv8_I2l7uS6gahujOsVqCIiHygTYpiY62GjVUq-2i08N1eBQH7RkNlsDaIr/exec';
+        let items = [];
+        let itemCount = 1;
+
+        // Fetch Items
+        async function fetchItems() {
+            try {
+                const response = await fetch(GOOGLE_SHEET_URL + '?action=getItems');
+                items = await response.json();
+                populateSelect(document.querySelector('.item-select'));
+            } catch (e) {
+                console.error("Failed to fetch items", e);
+            }
+        }
+
+        function populateSelect(select) {
+            select.innerHTML = '<option value="">Select Item...</option>' + 
+                items.filter(i => i.available_qty > 0).map(i => `<option value="${i.id}">${i.name} (Available: ${i.available_qty})</option>`).join('');
+        }
+
+        document.getElementById('add-item-btn').onclick = () => {
+            if (itemCount >= 4) return;
+            itemCount++;
+            const div = document.createElement('div');
+            div.className = 'item-row';
+            div.innerHTML = `
+                <select class="form-input item-select" name="item_${itemCount}">
+                    <option value="">Select Item...</option>
+                </select>
+                <input type="number" class="form-input" name="qty_${itemCount}" value="1" min="1">
+            `;
+            document.getElementById('items-container').appendChild(div);
+            populateSelect(div.querySelector('.item-select'));
+        };
+
+        document.getElementById('request-form').onsubmit = async (e) => {
+            e.preventDefault();
+            document.getElementById('loader').style.display = 'flex';
+
+            const formData = new FormData(e.target);
+            const requestData = {
+                action: 'saveRequest',
+                full_name: formData.get('full_name'),
+                office: formData.get('office'),
+                purpose: formData.get('purpose'),
+                due_date: formData.get('due_date'),
+                items: []
+            };
+
+            for (let i = 1; i <= itemCount; i++) {
+                const id = formData.get(`item_${i}`);
+                if (id) {
+                    const item = items.find(it => it.id == id);
+                    requestData.items.push({
+                        id: parseInt(id),
+                        name: item.name,
+                        qty: parseInt(formData.get(`qty_${i}`))
+                    });
+                }
+            }
+
+            try {
+                // We use fetch with POST. GAS must handle POST.
+                // Since this is a simple form, we'll use the same SaveAll logic but with a new action.
+                const response = await fetch(GOOGLE_SHEET_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // GAS requirements
+                    body: JSON.stringify(requestData)
+                });
+
+                document.getElementById('form-container').style.display = 'none';
+                document.getElementById('success-message').style.display = 'block';
+            } catch (err) {
+                alert("Error submitting request. Please try again.");
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        };
+
+        fetchItems();
+    </script>
+</body>
+</html>

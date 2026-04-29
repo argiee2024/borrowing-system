@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - IBS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(rgba(241, 248, 233, 0.8), rgba(241, 248, 233, 0.8)), url('login_bg.jpg');
+      background-size: cover;
+      background-position: center;
+      padding: 1.5rem;
+    }
+
+
+    .login-wrapper {
+      display: flex;
+      border-radius: 30px;
+      overflow: hidden;
+      box-shadow: 0 0 50px rgba(46, 125, 50, 0.15);
+      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      padding: 3px; /* Border thickness */
+      background: linear-gradient(135deg, #2e7d32, #a5d6a7, #c8e6c9);
+    }
+
+    .inner-wrapper {
+      display: flex;
+      background: #ffffff;
+      border-radius: 28px;
+      overflow: hidden;
+    }
+
+    .login-container {
+      width: 420px;
+      padding: 4rem 3rem;
+      border-right: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .mobile-access {
+      width: 300px;
+      padding: 3rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      background: #f1f8e9;
+    }
+
+    .qr-container {
+      background: white;
+      padding: 1rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+
+    .mobile-access h3 {
+      color: #1b5e20;
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .mobile-access p {
+      color: #388e3c;
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    .logo h1 {
+      color: #2e7d32;
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      text-align: center;
+      margin-bottom: 3rem;
+      text-transform: capitalize;
+    }
+
+    .logo p {
+      color: #388e3c;
+      font-size: 0.9rem;
+      margin-top: 0.25rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      color: #1b5e20;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      margin-left: 0.25rem;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-wrapper input {
+      width: 100%;
+      padding: 0.75rem 0;
+      border: none;
+      border-bottom: 1px solid rgba(46, 125, 50, 0.3);
+      background: transparent;
+      color: #1e293b;
+      font-size: 1rem;
+      transition: all 0.3s;
+    }
+
+    .input-wrapper input:focus {
+      outline: none;
+      border-bottom-color: #2e7d32;
+    }
+
+    /* Removed input-icon styles */
+
+    .btn-login {
+      width: 100%;
+      padding: 0.8rem;
+      border-radius: 50px;
+      border: 2px solid #2e7d32;
+      background: transparent;
+      color: #2e7d32;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 2.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .btn-login:hover {
+      background: #2e7d32;
+      color: #ffffff;
+      box-shadow: 0 0 20px rgba(46, 125, 50, 0.4);
+    }
+
+    .btn-login:active {
+      transform: translateY(0);
+    }
+
+    .error-msg {
+      background: rgba(255, 255, 255, 0.2);
+      border-left: 4px solid #f87171;
+      color: white;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+      display: none;
+      animation: shake 0.4s ease-in-out;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(5px); }
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="login-wrapper">
+    <div class="inner-wrapper">
+      <div class="login-container">
+        <div class="logo" style="display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin-bottom: 3rem;">
+          <img src="logo.png" alt="Logo" style="width: 70px; height: 70px; object-fit: contain; margin: 0;">
+          <h1 style="margin: 0; font-size: 3rem;">IBS</h1>
+        </div>
+
+        <div class="error-msg" id="error-msg"></div>
+
+        <form id="login-form">
+          <div class="form-group">
+            <div class="input-wrapper">
+              <input type="text" id="username" placeholder="Username" required autocomplete="off">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="input-wrapper">
+              <input type="password" id="password" placeholder="Password" required>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-login">Submit</button>
+        </form>
+      </div>
+
+      <div class="mobile-access">
+        <h3>Mobile Access</h3>
+        <div class="qr-container" id="qrcode"></div>
+        <p>Scan to open on your device</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const loginForm = document.getElementById('login-form');
+    const errorMsg = document.getElementById('error-msg');
+
+    loginForm.onsubmit = (e) => {
+      e.preventDefault();
+      const user = document.getElementById('username').value;
+      const pass = document.getElementById('password').value;
+
+      // Mock Authentication Logic
+      // In a real app, this would be a server-side check.
+      const savedData = JSON.parse(localStorage.getItem('borrowing_system_data') || '{"users":[]}');
+      
+      // Ensure default admin is always available even if other users exist
+      const defaultAdmin = { username: 'admin', password: 'admin123', full_name: 'System Admin', role: 'admin' };
+      const users = [...savedData.users, defaultAdmin];
+
+      const foundUser = users.find(u => u.username === user && u.password === pass);
+
+      if (foundUser) {
+        if (foundUser.role === 'borrower') {
+          showError('Access Denied: Borrowers cannot access the management dashboard.');
+          return;
+        }
+        sessionStorage.setItem('borrowSys_loggedIn', 'true');
+        sessionStorage.setItem('borrowSys_user', foundUser.full_name);
+        window.location.href = 'index.html';
+      } else {
+        showError('Invalid username or password. Please try again.');
+      }
+    };
+
+    function showError(text) {
+      errorMsg.textContent = text;
+      errorMsg.style.display = 'block';
+      setTimeout(() => {
+        errorMsg.classList.remove('shake');
+        void errorMsg.offsetWidth; // trigger reflow
+        errorMsg.classList.add('shake');
+      }, 10);
+    }
+
+    // Generate QR Code dynamically
+    const currentUrl = window.location.href;
+    const mobileUrl = currentUrl.replace('localhost', '192.168.1.234').replace('127.0.0.1', '192.168.1.234');
+    
+    new QRCode(document.getElementById("qrcode"), {
+      text: mobileUrl,
+      width: 160,
+      height: 160,
+      colorDark : "#000000",
+      colorLight : "#ffffff",
+      correctLevel : QRCode.CorrectLevel.H
+    });
+
+    console.log("Mobile Access URL:", mobileUrl);
+  </script>
+</body>
+</html>

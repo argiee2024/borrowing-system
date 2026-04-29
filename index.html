@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Borrowing System - Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- SheetJS for Excel Integration -->
+  <script src="xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- Navigation Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header" style="display: flex; align-items: center; gap: 1rem;">
+      <img src="logo.png" alt="Logo" style="width: 40px; height: 40px; object-fit: contain;">
+      <h2>IBS</h2>
+    </div>
+    <ul class="nav-links">
+      <li class="nav-item active" data-view="dashboard">Dashboard</li>
+      <li class="nav-item" data-view="inventory">Inventory</li>
+      <li class="nav-item" data-view="transactions">Transactions</li>
+      <li class="nav-item" data-view="requests">Requests</li>
+      <li class="nav-item" data-view="borrowers">Borrowers</li>
+      <li class="nav-item" data-view="system-users">System Users</li>
+      <li class="nav-item" data-view="import-export">Import / Export</li>
+      <li class="nav-item" data-view="settings">Settings</li>
+    </ul>
+    
+    <div style="margin-top: auto; padding: 1rem;">
+      <button class="btn btn-outline" id="logout-btn" style="width: 100%; justify-content: center;">Logout</button>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+    <header class="top-bar">
+      <div class="search-box">
+        <span>🔍</span>
+        <input type="text" id="global-search" placeholder="Search anything...">
+      </div>
+
+      <div class="user-profile">
+        <div class="user-info">
+          <span class="name" id="nav-username">Admin</span>
+          <span class="role">System Administrator</span>
+        </div>
+        <div class="avatar">AD</div>
+      </div>
+    </header>
+
+    <div id="main-view">
+      <!-- Content injected by app.js -->
+    </div>
+  </main>
+
+  <!-- Global Modal Overlay -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-content" id="modal-content">
+      <!-- Modal content injected by app.js -->
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
