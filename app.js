@@ -67,8 +67,8 @@ const showConfirm = (message, onConfirm) => {
   };
 };
 // --- Google Sheets Database URL ---
-// PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL BELOW:
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzInADbcJDFnfLcD3jz9m0TWHMwvN0uzvMuXWGp1yMAkcWL1pav7OrxiM8ksM_JTy7o/exec';
+// PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzEZtzmUUOYhRCfyCD_1iWi15kCdbnD1fH4B-IcGgxwXWItW0T0KlDZmYLVssh1HFEz/exec';
 
 const Storage = {
   /**
