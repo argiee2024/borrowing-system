@@ -68,7 +68,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzEZtzmUUOYhRCfyCD_1iWi15kCdbnD1fH4B-IcGgxwXWItW0T0KlDZmYLVssh1HFEz/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxNXmHzzxNOJ-WJFDszUqwoBZSYpTKUEQ40mDllfmhZvaVqr4ro__lyPY68yf0JTrVb/exec';
 
 const Storage = {
   /**
@@ -105,16 +105,25 @@ const Storage = {
    * Load data from Google Sheets (restore from cloud)
    */
   async loadFromCloud() {
-    if (!GOOGLE_SHEET_URL) return;
+    if (!GOOGLE_SHEET_URL) return null;
     try {
-      const response = await fetch(GOOGLE_SHEET_URL);
-      const result = await response.json();
+      // Use a timestamp to prevent cached responses
+      const response = await fetch(`${GOOGLE_SHEET_URL}?action=getAll&t=${Date.now()}`);
+      const text = await response.text();
+      const result = JSON.parse(text);
+      
       if (result.success && result.data) {
         const cloudData = result.data;
         
-        // Safety: Only merge if we got valid data from the sheet
+        // Critical Safety: Don't overwrite local data with empty cloud data if cloud data is invalid
+        if (!cloudData.items || !Array.isArray(cloudData.items)) {
+          console.warn("Cloud data format invalid, skipping update.");
+          return appData;
+        }
+
+        // Merge cloud data into application state
         appData.users = Array.isArray(cloudData.users) ? cloudData.users : appData.users;
-        appData.items = Array.isArray(cloudData.items) ? cloudData.items : appData.items;
+        appData.items = cloudData.items;
         appData.records = Array.isArray(cloudData.records) ? cloudData.records : appData.records;
         appData.activity = Array.isArray(cloudData.activity) ? cloudData.activity : appData.activity;
         appData.requests = Array.isArray(cloudData.requests) ? cloudData.requests : appData.requests;
@@ -123,17 +132,23 @@ const Storage = {
           appData.settings = Array.isArray(cloudData.settings) ? cloudData.settings[0] : cloudData.settings;
         }
 
-        window.hasLoadedFromCloud = true; // Mark as successfully connected
+        window.hasLoadedFromCloud = true; // Mark as connected
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
         
-        // Refresh the current view to show new data (like requests)
+        // Notification for user
+        if (appData.requests && appData.requests.filter(r => r.status === 'pending').length > 0) {
+          console.log("New requests found!");
+        }
+
+        // Refresh UI if we are in a relevant view
         if (typeof switchView === 'function') switchView(currentView);
-        return true;
+        
+        return appData;
       }
     } catch (e) {
       console.error('Cloud load failed', e);
-      return false;
     }
+    return null;
   },
 
   /**
@@ -173,34 +188,6 @@ const Storage = {
     }
   },
 
-  /**
-   * Load data from Google Sheets (cloud)
-   */
-  async loadFromCloud() {
-    if (!GOOGLE_SHEET_URL) return null;
-    
-    try {
-      const response = await fetch(GOOGLE_SHEET_URL + '?action=getAll', {
-        redirect: 'follow'
-      });
-      const text = await response.text();
-      const result = JSON.parse(text);
-      if (result.success && result.data) {
-        const data = result.data;
-        data.users = data.users || [];
-        data.items = data.items || [];
-        data.records = data.records || [];
-        data.activity = data.activity || [];
-        data.settings = data.settings && data.settings[0] ? data.settings[0] : DEFAULT_DATA.settings;
-        // Update local cache
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        return data;
-      }
-    } catch (err) {
-      console.warn('Cloud load failed, using local cache:', err);
-    }
-    return null;
-  },
 
   /**
    * Import data from Excel file using SheetJS (XLSX global)
@@ -315,7 +302,8 @@ const renderDashboard = () => {
             </div>
             <div class="stat-value-large" style="font-size: 1.8rem; color: var(--primary);">${topOfficeCount}</div>
           </div>
-          <div class="stat-card-new ${pendingRequests > 0 ? 'pulse-danger' : ''}" style="cursor: pointer;" onclick="switchView('requests')">
+          <div class="stat-card-new ${pendingRequests > 0 ? 'pulse-danger' : ''}" style="cursor: pointer; position: relative;" onclick="switchView('requests')">
+            <button class="btn btn-soft" style="position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.2rem 0.5rem; font-size: 0.6rem;" onclick="event.stopPropagation(); Storage.loadFromCloud();">Refresh</button>
             <div>
               <h4 style="color: #f39c12;">Pending Requests</h4>
               <p>${pendingRequests} to review</p>
