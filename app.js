@@ -1692,10 +1692,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (success) showToast('System Connected to Cloud', 'success');
   });
 
-  // Auto-refresh for requests and data every 60 seconds
+  // Real-time Auto-refresh (Every 15 seconds)
   setInterval(() => {
     Storage.loadFromCloud();
-  }, 60000);
+  }, 15000);
 
   const navItems = document.querySelectorAll('.nav-item[data-view]');
   const modalOverlay = document.getElementById('modal-overlay');
