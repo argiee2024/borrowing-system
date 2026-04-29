@@ -285,6 +285,7 @@ const renderDashboard = () => {
   const activeBorrows = appData.records.filter(r => r.status === 'borrowed').length;
   const totalItems = appData.items.length;
   const overdueItems = appData.records.filter(r => r.status === 'overdue').length;
+  const pendingRequests = (appData.requests || []).filter(req => req.status === 'pending').length;
 
   // Calculate Top Office
   const officeCounts = {};
@@ -304,34 +305,41 @@ const renderDashboard = () => {
 
     <div class="dashboard-grid">
       <div class="main-stats">
-        <div class="top-cards">
+        <div class="top-cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
           <div class="stat-card-new primary">
             <div>
               <h4>Active Borrows</h4>
-              <p>${activeBorrows} Items currently out</p>
+              <p>${activeBorrows} Items out</p>
             </div>
-            <div class="stat-value-large">${activePercent}%</div>
+            <div class="stat-value-large" style="font-size: 1.8rem;">${activePercent}%</div>
           </div>
           <div class="stat-card-new">
             <div>
               <h4 style="color: var(--success);">Total Inventory</h4>
-              <p>${totalItems} Registered Items</p>
+              <p>${totalItems} Items</p>
             </div>
-            <div class="stat-value-large" style="color: var(--success);">${totalItems}</div>
+            <div class="stat-value-large" style="color: var(--success); font-size: 1.8rem;">${totalItems}</div>
           </div>
           <div class="stat-card-new">
             <div>
               <h4 style="color: var(--primary);">Top Office</h4>
               <p>${topOffice}</p>
             </div>
-            <div class="stat-value-large" style="font-size: 1.5rem; color: var(--primary);">${topOfficeCount}</div>
+            <div class="stat-value-large" style="font-size: 1.8rem; color: var(--primary);">${topOfficeCount}</div>
+          </div>
+          <div class="stat-card-new ${pendingRequests > 0 ? 'pulse-danger' : ''}" style="cursor: pointer;" onclick="switchView('requests')">
+            <div>
+              <h4 style="color: #f39c12;">Pending Requests</h4>
+              <p>${pendingRequests} to review</p>
+            </div>
+            <div class="stat-value-large" style="color: #f39c12; font-size: 1.8rem;">${pendingRequests}</div>
           </div>
           <div class="stat-card-new">
             <div>
               <h4 style="color: var(--danger);">Overdue Items</h4>
-              <p>${overdueItems} Needs attention</p>
+              <p>${overdueItems} Total</p>
             </div>
-            <div class="stat-value-large" style="color: var(--danger);">${overdueItems}</div>
+            <div class="stat-value-large" style="color: var(--danger); font-size: 1.8rem;">${overdueItems}</div>
           </div>
         </div>
 
