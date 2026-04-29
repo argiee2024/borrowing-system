@@ -111,28 +111,28 @@ const Storage = {
       const result = await response.json();
       if (result.success && result.data) {
         const cloudData = result.data;
-        // Basic validation: only overwrite if we got actual arrays
-        if (Array.isArray(cloudData.items) && cloudData.items.length > 0) {
-          appData.users = cloudData.users || [];
-          appData.items = cloudData.items || [];
-          appData.records = cloudData.records || [];
-          appData.activity = cloudData.activity || [];
-          appData.requests = cloudData.requests || [];
-          
-          // Settings handling (it might be an array or object from GAS)
-          if (Array.isArray(cloudData.settings) && cloudData.settings.length > 0) {
-            appData.settings = cloudData.settings[0];
-          } else if (cloudData.settings && typeof cloudData.settings === 'object') {
-            appData.settings = cloudData.settings;
-          }
-
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
-          switchView(currentView); // Refresh UI
-          showToast('Data restored from Google Sheets', 'success');
+        
+        // Safety: Only merge if we got valid data from the sheet
+        appData.users = Array.isArray(cloudData.users) ? cloudData.users : appData.users;
+        appData.items = Array.isArray(cloudData.items) ? cloudData.items : appData.items;
+        appData.records = Array.isArray(cloudData.records) ? cloudData.records : appData.records;
+        appData.activity = Array.isArray(cloudData.activity) ? cloudData.activity : appData.activity;
+        appData.requests = Array.isArray(cloudData.requests) ? cloudData.requests : appData.requests;
+        
+        if (cloudData.settings) {
+          appData.settings = Array.isArray(cloudData.settings) ? cloudData.settings[0] : cloudData.settings;
         }
+
+        window.hasLoadedFromCloud = true; // Mark as successfully connected
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+        
+        // Refresh the current view to show new data (like requests)
+        if (typeof switchView === 'function') switchView(currentView);
+        return true;
       }
     } catch (e) {
       console.error('Cloud load failed', e);
+      return false;
     }
   },
 
@@ -142,9 +142,10 @@ const Storage = {
   syncToCloud(data) {
     if (!GOOGLE_SHEET_URL) return;
     
-    // Prevent accidental wiping: if local is empty but we haven't checked cloud yet, don't sync
-    if (data.items.length === 0 && data.users.length === 0) {
-      console.warn("Sync skipped: Local data is empty. Load from cloud first.");
+    // Safety Lock: Only block sync if local is empty AND we haven't loaded from cloud.
+    // If you have added items, we should definitely try to sync them.
+    if (!window.hasLoadedFromCloud && data.items.length === 0) {
+      console.warn("Sync blocked: System is waiting for cloud connection.");
       return;
     }
 
@@ -169,11 +170,12 @@ const Storage = {
     input.name = 'data';
     input.value = JSON.stringify({
       action: 'saveAll',
-      users: data.users,
-      items: data.items,
-      records: data.records,
+      users: data.users || [],
+      items: data.items || [],
+      records: data.records || [],
       activity: (data.activity || []).slice(0, 50),
-      settings: data.settings
+      settings: data.settings || DEFAULT_DATA.settings,
+      requests: data.requests || []
     });
     form.appendChild(input);
 
@@ -1700,7 +1702,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Try to restore from cloud on startup
-  Storage.loadFromCloud();
+  Storage.loadFromCloud().then(success => {
+    if (success) showToast('System Connected to Cloud', 'success');
+  });
+
+  // Auto-refresh for requests and data every 60 seconds
+  setInterval(() => {
+    Storage.loadFromCloud();
+  }, 60000);
 
   const navItems = document.querySelectorAll('.nav-item[data-view]');
   const modalOverlay = document.getElementById('modal-overlay');
