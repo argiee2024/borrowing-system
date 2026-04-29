@@ -68,7 +68,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL BELOW:
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyf-kKwuEv8_I2l7uS6gahujOsVqCIiHygTYpiY62GjVUq-2i08N1eBQH7RkNlsDaIr/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzInADbcJDFnfLcD3jz9m0TWHMwvN0uzvMuXWGp1yMAkcWL1pav7OrxiM8ksM_JTy7o/exec';
 
 const Storage = {
   /**
@@ -102,10 +102,51 @@ const Storage = {
   },
 
   /**
+   * Load data from Google Sheets (restore from cloud)
+   */
+  async loadFromCloud() {
+    if (!GOOGLE_SHEET_URL) return;
+    try {
+      const response = await fetch(GOOGLE_SHEET_URL);
+      const result = await response.json();
+      if (result.success && result.data) {
+        const cloudData = result.data;
+        // Basic validation: only overwrite if we got actual arrays
+        if (Array.isArray(cloudData.items) && cloudData.items.length > 0) {
+          appData.users = cloudData.users || [];
+          appData.items = cloudData.items || [];
+          appData.records = cloudData.records || [];
+          appData.activity = cloudData.activity || [];
+          appData.requests = cloudData.requests || [];
+          
+          // Settings handling (it might be an array or object from GAS)
+          if (Array.isArray(cloudData.settings) && cloudData.settings.length > 0) {
+            appData.settings = cloudData.settings[0];
+          } else if (cloudData.settings && typeof cloudData.settings === 'object') {
+            appData.settings = cloudData.settings;
+          }
+
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+          switchView(currentView); // Refresh UI
+          showToast('Data restored from Google Sheets', 'success');
+        }
+      }
+    } catch (e) {
+      console.error('Cloud load failed', e);
+    }
+  },
+
+  /**
    * Sync data to Google Sheets (background via hidden form)
    */
   syncToCloud(data) {
     if (!GOOGLE_SHEET_URL) return;
+    
+    // Prevent accidental wiping: if local is empty but we haven't checked cloud yet, don't sync
+    if (data.items.length === 0 && data.users.length === 0) {
+      console.warn("Sync skipped: Local data is empty. Load from cloud first.");
+      return;
+    }
 
     // Create hidden iframe if not exists
     let iframe = document.getElementById('gsheet_iframe');
@@ -1649,7 +1690,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Also ensure no negative availability
     if (item.available_qty < 0) item.available_qty = 0;
   });
-  Storage.save(appData);
+  
+  // Try to restore from cloud on startup
+  Storage.loadFromCloud();
 
   const navItems = document.querySelectorAll('.nav-item[data-view]');
   const modalOverlay = document.getElementById('modal-overlay');
