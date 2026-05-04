@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzOmcVHjPNeIbUV6x3h_jKTmeYQ8V5pxDZ1cnFpXUeKoZX37Bk2foSda_HCoR5pVg2j/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyT8hAb9Dx6EN7ojnYjkzLX5tyy7-u--DsmajXqWDqeYcwV5uXylJ1wIdehF5NvZJMI/exec';
 
 const Storage = {
   /**
@@ -122,15 +122,19 @@ const Storage = {
     console.log("Attempting cloud sync...");
     try {
       const response = await fetch(`${GOOGLE_SHEET_URL}?action=getAll&t=${Date.now()}`);
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
       
+      // We fetch as text first to avoid CORS issues with 'application/json'
       const text = await response.text();
       let result;
       try {
         result = JSON.parse(text);
-        window.lastRawResponse = result; // Save for debugger
+        window.lastRawResponse = result;
       } catch (e) {
         console.error("Server returned non-JSON response:", text);
+        // If it's HTML, it might be a Google Login or Error page
+        if (text.includes('google-signin')) {
+          showToast('Please open the Script URL in a new tab to authorize it.', 'warning');
+        }
         return null;
       }
       
@@ -200,8 +204,8 @@ const Storage = {
       }
     } catch (e) {
       console.error('Cloud load failed:', e);
-      if (!isAuto || !window.hasLoadedFromCloud) {
-        showToast('Cloud connection failed. Check internet.', 'danger');
+      if (!isAuto) {
+        showToast('Connection failed: ' + e.message, 'danger');
       }
       return null;
     }
