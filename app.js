@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyT8hAb9Dx6EN7ojnYjkzLX5tyy7-u--DsmajXqWDqeYcwV5uXylJ1wIdehF5NvZJMI/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxqQPQKpzqvP3hJjnMcnGDx1ha8iq7wNvu1GvZSnNRG5PO2a15pH-DpZb2IhB5-XFxi/exec';
 
 const Storage = {
   /**
@@ -204,6 +204,14 @@ const Storage = {
       }
     } catch (e) {
       console.error('Cloud load failed:', e);
+      // Auto-retry once if it's a network glitch
+      if (!window.hasRetried) {
+        window.hasRetried = true;
+        console.log("Retrying in 2s...");
+        setTimeout(() => this.loadFromCloud(isAuto), 2000);
+        return null;
+      }
+      window.hasRetried = false;
       if (!isAuto) {
         showToast('Connection failed: ' + e.message, 'danger');
       }
