@@ -2116,8 +2116,19 @@ ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No
         const borrowerName = user ? user.full_name : (clickedRecord.user_name || 'Unknown');
         const office = user ? (user.office || 'N/A') : (clickedRecord.office || 'N/A');
         const headerUrl = new URL('print_header.png', window.location.href).href;
-        const printWindow = window.open('', '_blank', 'width=700,height=900');
-        printWindow.document.write(`
+        
+        // Use Hidden Iframe for Printing (Stable & Pro)
+        let printFrame = document.getElementById('print-iframe');
+        if (!printFrame) {
+            printFrame = document.createElement('iframe');
+            printFrame.id = 'print-iframe';
+            printFrame.style.display = 'none';
+            document.body.appendChild(printFrame);
+        }
+        
+        const doc = printFrame.contentWindow.document;
+        doc.open();
+        doc.write(`
           <!DOCTYPE html>
           <html>
           <head>
@@ -2255,25 +2266,28 @@ ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No
               </div>
 
               <script>
-                  function runPrint() {
+                  window.onload = () => {
                       setTimeout(() => {
                           window.print();
-                      }, 700);
-                  }
-
-                  if (document.readyState === 'complete') {
-                      runPrint();
-                  } else {
-                      window.addEventListener('load', runPrint);
-                  }
+                      }, 500);
+                  };
               </script>
           </body>
           </html>
         `);
-        printWindow.document.close();
+        doc.close();
       }
     }
   });
+
+  // Refresh current view logic to keep quantities real-time
+  const originalSave = Storage.save;
+  Storage.save = (data) => {
+    originalSave.call(Storage, data);
+    updateNavigationBadges();
+    // Re-render current view to show new quantities immediately
+    switchView(currentView);
+  };
 
   // Real-time activity feed update every 5 seconds
   setInterval(renderActivityFeed, 5000);
