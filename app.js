@@ -2255,22 +2255,17 @@ ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No
               </div>
 
               <script>
-                  window.onload = () => {
-                      const img = document.querySelector('.print-header img');
-                      const doPrint = () => {
-                          setTimeout(() => {
-                              window.print();
-                              window.onafterprint = () => window.close();
-                          }, 500);
-                      };
+                  function runPrint() {
+                      setTimeout(() => {
+                          window.print();
+                      }, 700);
+                  }
 
-                      if (img && !img.complete) {
-                          img.onload = doPrint;
-                          img.onerror = doPrint;
-                      } else {
-                          doPrint();
-                      }
-                  };
+                  if (document.readyState === 'complete') {
+                      runPrint();
+                  } else {
+                      window.addEventListener('load', runPrint);
+                  }
               </script>
           </body>
           </html>
