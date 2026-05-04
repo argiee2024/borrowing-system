@@ -1567,7 +1567,7 @@ const renderRequests = () => {
           </tr>
         </thead>
         <tbody>
-          ${(appData.requests || []).filter(req => (req.status || '').toLowerCase() === 'pending').sort((a,b) => b.id > a.id ? -1 : 1).map(req => {
+          ${(appData.requests || []).filter(req => (req.status || '').toLowerCase() === 'pending').sort((a,b) => (b.id || 0) - (a.id || 0)).map(req => {
             let itemsList = req.items || '';
             try {
               const parsed = typeof req.items === 'string' ? JSON.parse(req.items) : req.items;
@@ -1575,17 +1575,16 @@ const renderRequests = () => {
                 itemsList = parsed.map(i => `• ${i.name} (${i.qty})`).join('<br>');
               }
             } catch(e) {
-              // Already human-readable or plain string
-              itemsList = (req.items || '').split(', ').map(i => `• ${i}`).join('<br>');
+              itemsList = String(req.items || '').split(',').map(i => `• ${i.trim()}`).join('<br>');
             }
 
             return `
               <tr>
-                <td style="font-size: 0.8rem; color: var(--text-muted);">${formatDateTimeStr(req.created_at)}</td>
-                <td style="font-weight: 600;">${req.full_name}</td>
-                <td><span class="badge" style="background: var(--primary-soft); color: var(--primary);">${req.office}</span></td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">${formatDateTimeStr(req.created_at || req.id)}</td>
+                <td style="font-weight: 600;">${req.full_name || 'Anonymous'}</td>
+                <td><span class="badge" style="background: var(--primary-soft); color: var(--primary);">${req.office || 'N/A'}</span></td>
                 <td style="font-size: 0.85rem;">${itemsList}</td>
-                <td>${req.purpose}</td>
+                <td>${req.purpose || 'No purpose stated'}</td>
                 <td>
                   <div style="display: flex; gap: 0.5rem;">
                     <button class="btn btn-primary approve-request-btn" data-id="${req.id}" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Approve</button>
