@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxNXmHzzxNOJ-WJFDszUqwoBZSYpTKUEQ40mDllfmhZvaVqr4ro__lyPY68yf0JTrVb/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzg8fCYUx2vdLwJegzJlppfcRVzvIFyOrj1iimR0X1En-7aCfo-a4B9OmyhIfUNHSBC/exec';
 
 const Storage = {
   /**
@@ -128,6 +128,7 @@ const Storage = {
       let result;
       try {
         result = JSON.parse(text);
+        window.lastRawResponse = result; // Save for debugger
       } catch (e) {
         console.error("Server returned non-JSON response:", text);
         return null;
@@ -135,19 +136,19 @@ const Storage = {
       
       if (result.success && result.data) {
         const cloudData = result.data;
-        
-        if (!cloudData.items || !Array.isArray(cloudData.items)) {
-          console.warn("Cloud data invalid:", cloudData);
+        if (!cloudData) {
+          console.warn("Cloud data empty:", cloudData);
           return appData;
         }
 
-        // Align Users
-        const cloudUsers = cloudData.users || cloudData.Users || cloudData.Borrowers;
-        appData.users = Array.isArray(cloudUsers) ? cloudUsers : appData.users;
-
-        // Align Items / Inventory
-        const cloudItems = cloudData.items || cloudData.Items || cloudData.inventory || cloudData.Inventory;
-        appData.items = Array.isArray(cloudItems) ? cloudItems : appData.items;
+        // Resiliently update each data type
+        if (Array.isArray(cloudData.users || cloudData.Users || cloudData.Borrowers)) {
+          appData.users = cloudData.users || cloudData.Users || cloudData.Borrowers;
+        }
+        
+        if (Array.isArray(cloudData.items || cloudData.Items || cloudData.inventory)) {
+          appData.items = cloudData.items || cloudData.Items || cloudData.inventory;
+        }
         
         // Align Records / Transactions (Transactions Log)
         const cloudRecords = cloudData.records || cloudData.Records || cloudData.transactions || cloudData.Transactions;
@@ -190,6 +191,7 @@ const Storage = {
         }
 
         if (typeof switchView === 'function') switchView(currentView);
+        updateNavigationBadges();
         return appData;
       } else {
         console.error("Cloud error:", result.error);
@@ -1466,7 +1468,13 @@ const renderSettings = () => {
           </div>
         </div>
 
-        <h3 style="margin-bottom: 1.5rem; margin-top: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; color: var(--primary);">Other Settings</h3>
+        <h3 style="margin-bottom: 1.5rem; margin-top: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; color: var(--primary);">System URLs & QR</h3>
+        <div class="form-group">
+          <label class="form-label">Public Borrower Form URL</label>
+          <input type="url" class="form-input" name="borrower_form_url" value="${appData.settings.borrower_form_url || ''}" placeholder="https://your-site.com/borrower.html" />
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Paste the public link to your Borrower Form here to update the QR code below.</p>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Penalty Rate (Per Day)</label>
           <input type="number" class="form-input" name="rate_per_day" value="${appData.settings.rate_per_day || 0}" step="0.01" required />
@@ -1491,6 +1499,20 @@ const renderSettings = () => {
         <button class="btn btn-soft" id="copy-url-btn" style="padding: 0.4rem 0.8rem; font-size: 0.7rem; white-space: nowrap;">Copy Link</button>
       </div>
     </div>
+
+    <!-- Cloud Debugger Panel -->
+    <div class="card" style="max-width: 600px; margin-top: 2rem; border: 1px solid #ffcc00; background: #fffcf0;">
+      <h3 style="margin-bottom: 0.5rem; color: #856404;">🛠️ Cloud Debugger</h3>
+      <p style="margin-bottom: 1rem; color: #856404; font-size: 0.8rem;">Use this to verify if the server is actually sending requests back to the dashboard.</p>
+      
+      <div style="text-align: left;">
+        <label class="form-label" style="color: #856404;">Last Raw Server Response:</label>
+        <pre id="debug-json" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; font-size: 0.7rem; overflow-x: auto; max-height: 200px; border: 1px solid #ddd;">
+${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2).substring(0, 500) + '...' : 'No data received yet. Click refresh on dashboard.'}
+        </pre>
+        <button class="btn btn-primary" style="margin-top: 1rem; background: #856404; border: none; width: 100%;" onclick="Storage.loadFromCloud()">Force Deep Sync</button>
+      </div>
+    </div>
   `;
 
   // Set URL and QR
@@ -1502,11 +1524,15 @@ const renderSettings = () => {
     const urlCode = document.getElementById('borrower-url');
     
     if (qrImg && urlCode) {
-      urlCode.innerText = borrowerUrl;
-      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(borrowerUrl)}`;
+      // Prioritize manual URL if set
+      const manualUrl = appData.settings.borrower_form_url;
+      const finalUrl = manualUrl || new URL('borrower.html', window.location.href).href;
+      
+      urlCode.innerText = finalUrl;
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(finalUrl)}`;
       
       // Add a note if running on localhost/file
-      if (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      if (!manualUrl && (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
         const note = document.createElement('p');
         note.style.fontSize = '0.7rem';
         note.style.color = 'var(--danger)';
@@ -1531,6 +1557,7 @@ const renderSettings = () => {
     appData.settings.approved_by_contact = formData.get('approved_by_contact');
     appData.settings.issued_by = formData.get('issued_by');
     appData.settings.issued_by_contact = formData.get('issued_by_contact');
+    appData.settings.borrower_form_url = formData.get('borrower_form_url');
     appData.settings.rate_per_day = parseFloat(formData.get('rate_per_day'));
 
     Storage.save(appData);
@@ -1557,6 +1584,9 @@ const renderRequests = () => {
   mainView.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
       <h1 style="font-size: 1.75rem; font-weight: 800;">Pending Requests</h1>
+      <button class="btn btn-outline" id="clear-all-requests" style="color: var(--danger); border-color: var(--danger); font-size: 0.85rem; padding: 0.5rem 1rem;">
+        🗑️ Clear All
+      </button>
     </div>
 
     <div class="table-container">
@@ -1605,6 +1635,19 @@ const renderRequests = () => {
     </div>
   `;
 
+  // Clear All Requests
+  const clearBtn = document.getElementById('clear-all-requests');
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      showConfirm('Are you sure you want to PERMANENTLY delete all requests in the database?', () => {
+        appData.requests = [];
+        Storage.save(appData);
+        renderRequests();
+        showToast('All requests cleared from database', 'info');
+      });
+    };
+  }
+
   // Approve Request
   document.querySelectorAll('.approve-request-btn').forEach(btn => {
     btn.onclick = () => {
@@ -1612,12 +1655,17 @@ const renderRequests = () => {
       const req = appData.requests.find(r => r.id.toString() === id.toString());
       if (!req) return;
 
-      const reqItems = JSON.parse(req.items || '[]');
+      // Align with Borrowers List
+      const borrower = appData.users.find(u => u.full_name.toLowerCase() === req.full_name.toLowerCase());
+      const userId = borrower ? borrower.id : 0; // Use existing ID or 0 for guest
+      
+      const reqItems = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []);
       const batchId = Date.now();
       
       // Check stock first
       for (const reqI of reqItems) {
-        const item = appData.items.find(i => i.id === reqI.id);
+        // Support matching by ID or Name
+        const item = appData.items.find(i => i.id.toString() === (reqI.id || '').toString() || i.name === reqI.name);
         if (!item || item.available_qty < reqI.qty) {
           showToast(`Stock unavailable for ${reqI.name}`, 'danger');
           return;
@@ -1626,21 +1674,21 @@ const renderRequests = () => {
 
       // Convert Request to Records
       reqItems.forEach(reqI => {
-        const item = appData.items.find(i => i.id === reqI.id);
+        const item = appData.items.find(i => i.id.toString() === (reqI.id || '').toString() || i.name === reqI.name);
         const record = {
           id: Date.now() + Math.random(),
           batch_id: batchId,
-          user_id: 0, // Guest/Public
-          user_name: req.full_name,
+          user_id: userId,
+          user_name: borrower ? borrower.full_name : req.full_name,
           item_id: item.id,
           item_name: item.name,
           qty: reqI.qty,
-          office: req.office,
+          office: borrower ? (borrower.office || req.office) : req.office,
           borrow_date: new Date().toISOString().split('T')[0],
-          due_date: req.due_date,
+          due_date: req.due_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0], // Default 7 days
           status: 'borrowed',
           purpose: req.purpose,
-          user_phone: ''
+          user_phone: borrower ? borrower.phone : (req.phone || '')
         };
         item.available_qty -= reqI.qty;
         appData.records.push(record);
@@ -1674,6 +1722,43 @@ const renderRequests = () => {
         showToast('Request declined', 'info');
       });
     };
+  });
+};
+
+const updateNavigationBadges = () => {
+  const pendingCount = (appData.requests || []).filter(r => (r.status || '').toLowerCase() === 'pending').length;
+  const overdueCount = (appData.records || []).filter(r => (r.status || '').toLowerCase() === 'overdue').length;
+
+  const navItems = document.querySelectorAll('.nav-item[data-view]');
+  navItems.forEach(item => {
+    const view = item.dataset.view;
+    let badge = item.querySelector('.nav-badge');
+    
+    const count = view === 'requests' ? pendingCount : (view === 'transactions' ? overdueCount : 0);
+    
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge';
+        badge.style.cssText = `
+          background: ${view === 'requests' ? '#f39c12' : 'var(--danger)'};
+          color: white;
+          font-size: 0.65rem;
+          padding: 2px 6px;
+          border-radius: 10px;
+          margin-left: auto;
+          font-weight: 800;
+        `;
+        item.appendChild(badge);
+      }
+      badge.textContent = count;
+      if (view === 'requests') {
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+      }
+    } else if (badge) {
+      badge.remove();
+    }
   });
 };
 
@@ -1924,6 +2009,8 @@ const switchView = (view) => {
     item.classList.toggle('active', item.dataset.view === view);
   });
 
+  updateNavigationBadges();
+
   switch (view) {
     case 'dashboard': renderDashboard(); break;
     case 'inventory': renderInventory(); break;
@@ -1965,6 +2052,29 @@ document.addEventListener('DOMContentLoaded', () => {
   navItems.forEach(item => {
     item.onclick = () => switchView(item.dataset.view);
   });
+
+  // Top Debug Button Logic
+  const topDebugBtn = document.getElementById('top-debug-btn');
+  if (topDebugBtn) {
+    topDebugBtn.onclick = () => {
+      showModal(`
+        <h2 style="margin-bottom: 1rem; color: #856404;">🔧 Database Debugger</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">This shows exactly what your Google Sheet is sending to the dashboard right now.</p>
+        
+        <div style="text-align: left;">
+          <label style="font-weight: bold; font-size: 0.8rem;">Raw JSON Response:</label>
+          <pre style="background: #f8f9fa; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.7rem; overflow: auto; max-height: 300px; margin-top: 0.5rem;">
+${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No data fetched yet. Please refresh or wait 5 seconds.'}
+          </pre>
+        </div>
+        
+        <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+          <button class="btn btn-primary" style="flex: 1; background: #856404; border: none;" onclick="Storage.loadFromCloud(); hideModal();">Force Refresh</button>
+          <button class="btn btn-outline" style="flex: 1;" onclick="hideModal()">Close</button>
+        </div>
+      `);
+    };
+  }
   
   // Set username in Top Bar
   const usernameDisplay = document.getElementById('nav-username');
