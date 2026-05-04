@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxxyrD8WoCg8BTHumxIPhxnxZg_G5BmHlBoDrWzjYWHnOJtKZec-viQcddm2Ddeng4n/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyCAESVEZuMap1rh9qhwbYP8QjgeT0V95rZn_UA4w5MoDPlldHInDDEYRu0xDuSZthj/exec';
 
 const Storage = {
   /**
@@ -2255,13 +2255,22 @@ ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No
               </div>
 
               <script>
-                  const img = document.querySelector('.print-header img');
-                  if (img.complete) {
-                      window.print();
-                  } else {
-                      img.onload = () => { window.print(); };
-                      img.onerror = () => { window.print(); };
-                  }
+                  window.onload = () => {
+                      const img = document.querySelector('.print-header img');
+                      const doPrint = () => {
+                          setTimeout(() => {
+                              window.print();
+                              window.onafterprint = () => window.close();
+                          }, 500);
+                      };
+
+                      if (img && !img.complete) {
+                          img.onload = doPrint;
+                          img.onerror = doPrint;
+                      } else {
+                          doPrint();
+                      }
+                  };
               </script>
           </body>
           </html>
