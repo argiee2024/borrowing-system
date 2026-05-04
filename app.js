@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzg8fCYUx2vdLwJegzJlppfcRVzvIFyOrj1iimR0X1En-7aCfo-a4B9OmyhIfUNHSBC/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzsc4moE0x57-sXn6lUjZ1fGBkW3wnAbPno4jRMy7uCKKVGbUlt4dUbQRraIGi_aNkM/exec';
 
 const Storage = {
   /**

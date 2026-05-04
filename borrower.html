@@ -24,36 +24,40 @@
 
         .request-card {
             background: var(--surface);
-            padding: 2rem;
-            border-radius: 20px;
+            padding: 2.5rem;
+            border-radius: 24px;
             box-shadow: var(--shadow);
             width: 100%;
             max-width: 500px;
         }
 
         .header { text-align: center; margin-bottom: 2rem; }
-        .header img { width: 60px; margin-bottom: 1rem; }
-        .header h1 { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+        .header h1 { font-size: 1.5rem; font-weight: 800; color: var(--primary); margin-bottom: 0.5rem; }
         .header p { color: var(--text-muted); font-size: 0.9rem; }
 
         .form-group { margin-bottom: 1.25rem; }
-        .form-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-muted); }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
         .form-input {
             width: 100%;
-            padding: 0.8rem 1rem;
+            padding: 0.9rem 1.1rem;
             border: 1.5px solid var(--border);
-            border-radius: 10px;
+            border-radius: 12px;
             outline: none;
             transition: all 0.2s;
-            font-size: 0.95rem;
+            font-size: 1rem;
+            background: #fafafa;
         }
-        .form-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+        .form-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 4px var(--primary-soft); }
+
+        .item-row { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; align-items: center; }
+        .item-row select { flex: 3; }
+        .item-row input { flex: 1; }
 
         .btn {
             width: 100%;
-            padding: 1rem;
+            padding: 1.1rem;
             border: none;
-            border-radius: 12px;
+            border-radius: 14px;
             font-weight: 700;
             cursor: pointer;
             transition: all 0.2s;
@@ -61,161 +65,193 @@
             margin-top: 1rem;
         }
         .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
-        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(46, 125, 50, 0.2); }
+        .btn-primary:disabled { background: #ccc; cursor: not-allowed; transform: none; }
 
         #success-message { display: none; text-align: center; }
-        #success-message h2 { color: var(--primary); margin-bottom: 1rem; }
         
-        .item-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
-        .item-row select { flex: 2; }
-        .item-row input { flex: 1; }
-
-        .loading {
+        .loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.8); display: none; justify-content: center; align-items: center;
-            z-index: 100; font-weight: 700; color: var(--primary);
+            background: rgba(255,255,255,0.9); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 1000;
         }
+        .spinner { width: 40px; height: 40px; border: 4px solid var(--primary-soft); border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="loading" id="loader">Sending Request...</div>
+    <div class="loading-overlay" id="loader">
+        <div class="spinner"></div>
+        <p style="font-weight: 700; color: var(--primary);">Submitting Request...</p>
+    </div>
 
     <div class="request-card" id="form-container">
         <div class="header">
-            <img src="logo.png" alt="Logo" style="width: 60px; height: 60px; object-fit: contain;" onerror="this.onerror=null; this.src='https://cdn-icons-png.flaticon.com/512/10302/10302213.png';">
+            <img src="logo.png" alt="Logo" style="width: 60px; height: 60px; object-fit: contain; margin-bottom: 1rem;" onerror="this.onerror=null; this.src='https://cdn-icons-png.flaticon.com/512/10302/10302213.png';">
             <h1>Item Request Form</h1>
-            <p>Borrowing System - Provincial Government</p>
+            <p>Enter your details to borrow equipment</p>
         </div>
 
-        <form id="request-form">
+        <form id="main-request-form">
             <div class="form-group">
                 <label class="form-label">Full Name</label>
-                <input type="text" class="form-input" name="full_name" placeholder="Enter your full name" required>
+                <input type="text" class="form-input" name="full_name" placeholder="Juan Dela Cruz" required>
             </div>
 
             <div class="form-group">
                 <label class="form-label">Office / Department</label>
-                <input type="text" class="form-input" name="office" placeholder="e.g. Finance, GSO" required>
+                <input type="text" class="form-input" name="office" placeholder="e.g. IT Department" required>
             </div>
 
             <div class="form-group">
                 <label class="form-label">Items to Borrow</label>
-                <div id="items-container">
+                <div id="items-list">
                     <div class="item-row">
                         <select class="form-input item-select" name="item_1" required>
-                            <option value="">Select Item...</option>
+                            <option value="">Loading items...</option>
                         </select>
-                        <input type="number" class="form-input" name="qty_1" value="1" min="1" required>
+                        <input type="number" class="form-input" name="qty_1" value="1" min="1" required title="Quantity">
                     </div>
                 </div>
-                <button type="button" id="add-item-btn" style="background: none; border: none; color: var(--primary); font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-top: 0.5rem;">+ Add Another Item</button>
+                <button type="button" id="add-more-btn" style="background: none; border: none; color: var(--primary); font-size: 0.85rem; font-weight: 700; cursor: pointer; margin-top: 0.5rem; display: flex; align-items: center; gap: 0.25rem;">
+                    <span>➕</span> Add Another Item
+                </button>
             </div>
 
             <div class="form-group">
                 <label class="form-label">Purpose</label>
-                <input type="text" class="form-input" name="purpose" placeholder="What will you use it for?" required>
+                <textarea class="form-input" name="purpose" placeholder="e.g. For official seminar use" required style="height: 80px; resize: none;"></textarea>
             </div>
 
             <div class="form-group">
-                <label class="form-label">Return Date (Expected)</label>
+                <label class="form-label">Expected Return Date</label>
                 <input type="date" class="form-input" name="due_date" required>
             </div>
 
-            <button type="submit" class="btn btn-primary">Submit Request</button>
+            <button type="submit" class="btn btn-primary" id="submit-btn">Submit Request</button>
         </form>
     </div>
 
     <div class="request-card" id="success-message">
-        <div style="font-size: 4rem; margin-bottom: 1rem;">✅</div>
-        <h2>Request Submitted!</h2>
-        <p>Your request has been sent to the Admin for approval. Please wait for confirmation.</p>
-        <button class="btn btn-primary" onclick="location.reload()">New Request</button>
+        <div style="font-size: 4.5rem; margin-bottom: 1.5rem;">✅</div>
+        <h2 style="color: var(--primary); margin-bottom: 0.5rem; font-weight: 800;">Request Sent!</h2>
+        <p style="color: var(--text-muted); margin-bottom: 2rem;">Your request has been received. Please wait for the administrator's approval.</p>
+        <button class="btn btn-primary" onclick="location.reload()">Send Another Request</button>
     </div>
 
     <script>
-        const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxNXmHzzxNOJ-WJFDszUqwoBZSYpTKUEQ40mDllfmhZvaVqr4ro__lyPY68yf0JTrVb/exec';
-        let items = [];
-        let itemCount = 1;
+        // MUST MATCH YOUR APPS SCRIPT URL
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsc4moE0x57-sXn6lUjZ1fGBkW3wnAbPno4jRMy7uCKKVGbUlt4dUbQRraIGi_aNkM/exec';
+        
+        let inventory = [];
+        let rowCount = 1;
 
-        // Fetch Items
-        async function fetchItems() {
+        // 1. Fetch live inventory
+        async function loadInventory() {
             try {
-                const response = await fetch(GOOGLE_SHEET_URL + '?action=getItems');
-                items = await response.json();
-                populateSelect(document.querySelector('.item-select'));
+                const response = await fetch(SCRIPT_URL + '?action=getAll');
+                const result = await response.json();
+                if (result.success && result.data.items) {
+                    inventory = result.data.items;
+                    updateItemDropdowns();
+                }
             } catch (e) {
-                console.error("Failed to fetch items", e);
+                console.error("Inventory load failed", e);
+                const selects = document.querySelectorAll('.item-select');
+                selects.forEach(s => s.innerHTML = '<option value="">Error loading items</option>');
             }
         }
 
-        function populateSelect(select) {
-            select.innerHTML = '<option value="">Select Item...</option>' + 
-                items.filter(i => i.available_qty > 0).map(i => `<option value="${i.id}">${i.name} (Available: ${i.available_qty})</option>`).join('');
+        function updateItemDropdowns() {
+            const selects = document.querySelectorAll('.item-select');
+            selects.forEach(select => {
+                const currentVal = select.value;
+                let html = '<option value="">Select an Item...</option>';
+                inventory.forEach(item => {
+                    const stock = parseInt(item.available_qty) || 0;
+                    if (stock > 0) {
+                        html += `<option value="${item.id}">${item.name} (${stock} available)</option>`;
+                    }
+                });
+                select.innerHTML = html;
+                select.value = currentVal;
+            });
         }
 
-        document.getElementById('add-item-btn').onclick = () => {
-            if (itemCount >= 4) return;
-            itemCount++;
+        // 2. Add row logic
+        document.getElementById('add-more-btn').onclick = () => {
+            if (rowCount >= 5) return;
+            rowCount++;
             const div = document.createElement('div');
             div.className = 'item-row';
             div.innerHTML = `
-                <select class="form-input item-select" name="item_${itemCount}">
-                    <option value="">Select Item...</option>
+                <select class="form-input item-select" name="item_${rowCount}" required>
+                    <option value="">Select an Item...</option>
                 </select>
-                <input type="number" class="form-input" name="qty_${itemCount}" value="1" min="1">
+                <input type="number" class="form-input" name="qty_${rowCount}" value="1" min="1" required>
             `;
-            document.getElementById('items-container').appendChild(div);
-            populateSelect(div.querySelector('.item-select'));
+            document.getElementById('items-list').appendChild(div);
+            updateItemDropdowns();
         };
 
-        document.getElementById('request-form').onsubmit = async (e) => {
+        // 3. Submit Logic
+        document.getElementById('main-request-form').onsubmit = async (e) => {
             e.preventDefault();
-            document.getElementById('loader').style.display = 'flex';
+            const loader = document.getElementById('loader');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            loader.style.display = 'flex';
+            submitBtn.disabled = true;
 
             const formData = new FormData(e.target);
-            const requestData = {
-                action: 'saveRequest',
-                full_name: formData.get('full_name'),
-                office: formData.get('office'),
-                purpose: formData.get('purpose'),
-                due_date: formData.get('due_date'),
-                items: []
-            };
+            const itemsToRequest = [];
 
-            for (let i = 1; i <= itemCount; i++) {
+            for (let i = 1; i <= rowCount; i++) {
                 const id = formData.get(`item_${i}`);
+                const qty = parseInt(formData.get(`qty_${i}`));
                 if (id) {
-                    const item = items.find(it => it.id == id);
-                    requestData.items.push({
-                        id: parseInt(id),
+                    const item = inventory.find(it => it.id.toString() === id.toString());
+                    itemsToRequest.push({
+                        id: item.id,
                         name: item.name,
-                        qty: parseInt(formData.get(`qty_${i}`))
+                        qty: qty
                     });
                 }
             }
 
+            const payload = {
+                action: 'submitRequest',
+                full_name: formData.get('full_name'),
+                office: formData.get('office'),
+                purpose: formData.get('purpose'),
+                due_date: formData.get('due_date'),
+                items: JSON.stringify(itemsToRequest)
+            };
+
             try {
-                // We use fetch with POST. GAS must handle POST.
-                // Since this is a simple form, we'll use the same SaveAll logic but with a new action.
-                const response = await fetch(GOOGLE_SHEET_URL, {
+                // We use GET params to bypass CORS preflight if needed, or POST with no-cors
+                // URLSearchParams is the most reliable "handshake" method for GAS
+                const queryParams = new URLSearchParams(payload).toString();
+                
+                await fetch(SCRIPT_URL + '?' + queryParams, {
                     method: 'POST',
-                    mode: 'no-cors', // GAS requirements
-                    body: JSON.stringify(requestData)
+                    mode: 'no-cors'
                 });
 
                 document.getElementById('form-container').style.display = 'none';
                 document.getElementById('success-message').style.display = 'block';
             } catch (err) {
-                console.error("Submission error:", err);
-                alert("Error submitting request. Please check your internet or ensure the script URL is correct.");
+                console.error("Submission failed", err);
+                alert("Submission failed. Please check your connection.");
+                submitBtn.disabled = false;
             } finally {
-                document.getElementById('loader').style.display = 'none';
+                loader.style.display = 'none';
             }
         };
 
-        fetchItems();
+        // Initialize
+        loadInventory();
     </script>
 </body>
 </html>
