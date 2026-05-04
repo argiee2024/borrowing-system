@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxqQPQKpzqvP3hJjnMcnGDx1ha8iq7wNvu1GvZSnNRG5PO2a15pH-DpZb2IhB5-XFxi/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxxyrD8WoCg8BTHumxIPhxnxZg_G5BmHlBoDrWzjYWHnOJtKZec-viQcddm2Ddeng4n/exec';
 
 const Storage = {
   /**
@@ -119,104 +119,57 @@ const Storage = {
    */
   async loadFromCloud(isAuto = false) {
     if (!GOOGLE_SHEET_URL || this.isSyncing) return null;
-    console.log("Attempting cloud sync...");
-    try {
-      const response = await fetch(`${GOOGLE_SHEET_URL}?action=getAll&t=${Date.now()}`);
-      
-      // We fetch as text first to avoid CORS issues with 'application/json'
-      const text = await response.text();
-      let result;
-      try {
-        result = JSON.parse(text);
+    
+    return new Promise((resolve) => {
+      console.log("Attempting Tunnel Sync (JSONP)...");
+      this.isSyncing = true;
+
+      window.handleCloudData = (result) => {
+        this.isSyncing = false;
         window.lastRawResponse = result;
-      } catch (e) {
-        console.error("Server returned non-JSON response:", text);
-        // If it's HTML, it might be a Google Login or Error page
-        if (text.includes('google-signin')) {
-          showToast('Please open the Script URL in a new tab to authorize it.', 'warning');
-        }
-        return null;
-      }
-      
-      if (result.success && result.data) {
         const cloudData = result.data;
-        if (!cloudData) {
-          console.warn("Cloud data empty:", cloudData);
-          return appData;
+        if (Array.isArray(cloudData.users)) appData.users = cloudData.users;
+        if (Array.isArray(cloudData.items)) appData.items = cloudData.items;
+        if (Array.isArray(cloudData.records)) {
+          appData.records = cloudData.records.map(r => {
+            r.qty = parseInt(r.qty) || 1;
+            if (!r.user_name && r.borrower_name) r.user_name = r.borrower_name;
+            return r;
+          });
         }
-
-        // Resiliently update each data type
-        if (Array.isArray(cloudData.users || cloudData.Users || cloudData.Borrowers)) {
-          appData.users = cloudData.users || cloudData.Users || cloudData.Borrowers;
-        }
-        
-        if (Array.isArray(cloudData.items || cloudData.Items || cloudData.inventory)) {
-          appData.items = cloudData.items || cloudData.Items || cloudData.inventory;
-        }
-        
-        // Align Records / Transactions (Transactions Log)
-        const cloudRecords = cloudData.records || cloudData.Records || cloudData.transactions || cloudData.Transactions;
-        appData.records = Array.isArray(cloudRecords) ? cloudRecords.map(r => {
-          // Robust field alignment
-          r.qty = parseInt(r.qty) || 1;
-          r.user_id = parseInt(r.user_id) || r.user_id;
-          r.item_id = parseInt(r.item_id) || r.item_id;
-          // Support both 'user_name' and 'borrower_name'
-          if (!r.user_name && r.borrower_name) r.user_name = r.borrower_name;
-          return r;
-        }) : appData.records;
-
-        appData.activity = Array.isArray(cloudData.activity) ? cloudData.activity : appData.activity;
-        
-        // Align Requests (Pending Requests from Mobile Form)
-        const cloudRequests = cloudData.requests || cloudData.Requests || cloudData.pending_requests;
-        appData.requests = Array.isArray(cloudRequests) ? cloudRequests.map(req => {
-          // Fallbacks for common mobile form field names
-          if (!req.full_name && req.name) req.full_name = req.name;
-          if (!req.office && req.department) req.office = req.department;
-          return req;
-        }) : appData.requests;
-        
-        if (cloudData.settings) {
-          appData.settings = Array.isArray(cloudData.settings) ? cloudData.settings[0] : cloudData.settings;
+        if (Array.isArray(cloudData.requests)) {
+          appData.requests = cloudData.requests.map(req => {
+            if (!req.full_name && req.name) req.full_name = req.name;
+            if (!req.office && req.department) req.office = req.department;
+            return req;
+          });
         }
 
         window.hasLoadedFromCloud = true;
-        window.lastSyncTime = new Date(); // Track successful sync
+        window.lastSyncTime = new Date();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
         
         const pendingCount = (appData.requests || []).filter(r => (r.status || '').toLowerCase() === 'pending').length;
-        
-        if (!isAuto) {
-          showToast(pendingCount > 0 ? `Synced! ${pendingCount} requests found.` : 'Cloud Synced', 'success');
-        } else if (pendingCount > 0 && window.lastPendingCount !== pendingCount) {
-          showToast(`New Action Required: ${pendingCount} Pending Requests`, 'warning');
-          window.lastPendingCount = pendingCount;
-        }
+        if (!isAuto) showToast(pendingCount > 0 ? `Synced! ${pendingCount} requests found.` : 'Cloud Synced', 'success');
 
         if (typeof switchView === 'function') switchView(currentView);
         updateNavigationBadges();
-        return appData;
-      } else {
-        console.error("Cloud error:", result.error);
-        if (!isAuto) showToast('Cloud error: ' + (result.error || 'Unknown'), 'danger');
-        return null;
-      }
-    } catch (e) {
-      console.error('Cloud load failed:', e);
-      // Auto-retry once if it's a network glitch
-      if (!window.hasRetried) {
-        window.hasRetried = true;
-        console.log("Retrying in 2s...");
-        setTimeout(() => this.loadFromCloud(isAuto), 2000);
-        return null;
-      }
-      window.hasRetried = false;
-      if (!isAuto) {
-        showToast('Connection failed: ' + e.message, 'danger');
-      }
-      return null;
-    }
+        resolve(appData);
+        
+        const scriptTag = document.getElementById('jsonp-sync-script');
+        if (scriptTag) scriptTag.remove();
+      };
+
+      const script = document.createElement('script');
+      script.id = 'jsonp-sync-script';
+      script.src = `${GOOGLE_SHEET_URL}?action=getAll&callback=handleCloudData&t=${Date.now()}`;
+      script.onerror = () => {
+        this.isSyncing = false;
+        if (!isAuto) showToast('Tunnel failed. Using local data.', 'danger');
+        resolve(null);
+      };
+      document.body.appendChild(script);
+    });
   },
 
   /**
@@ -2080,8 +2033,27 @@ ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No
           </pre>
         </div>
         
+        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #ddd;">
+          <label style="font-weight: bold; font-size: 0.8rem; color: var(--danger);">⚠️ Manual Data Import (If Sync Fails):</label>
+          <textarea id="manual-data-input" placeholder="Paste the text from your Google Script tab here..." style="width: 100%; height: 60px; font-size: 0.7rem; margin-top: 0.5rem; border-radius: 6px; border: 1px solid #ddd; padding: 0.5rem;"></textarea>
+          <button class="btn btn-primary" style="margin-top: 0.5rem; width: 100%; font-size: 0.8rem;" onclick="
+            try {
+              const data = JSON.parse(document.getElementById('manual-data-input').value);
+              if (data.data) {
+                appData = {...appData, ...data.data};
+                Storage.save(appData);
+                hideModal();
+                switchView(currentView);
+                showToast('Data imported manually!', 'success');
+              } else {
+                alert('Invalid data format. Please copy everything from the Google Script tab.');
+              }
+            } catch(e) { alert('Error: ' + e.message); }
+          ">Import Manually</button>
+        </div>
+        
         <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
-          <button class="btn btn-primary" style="flex: 1; background: #856404; border: none;" onclick="Storage.loadFromCloud(); hideModal();">Force Refresh</button>
+          <button class="btn btn-primary" style="flex: 1; background: #856404; border: none;" onclick="Storage.loadFromCloud(); hideModal();">Force Auto-Refresh</button>
           <button class="btn btn-outline" style="flex: 1;" onclick="hideModal()">Close</button>
         </div>
       `);
