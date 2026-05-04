@@ -6,6 +6,7 @@
   <title>Borrowing System - Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -13,7 +14,7 @@
   <aside class="sidebar">
     <div class="sidebar-header" style="display: flex; align-items: center; gap: 1rem;">
       <img src="logo.png" alt="Logo" style="width: 40px; height: 40px; object-fit: contain;" onerror="this.onerror=null; this.src='https://cdn-icons-png.flaticon.com/512/10302/10302213.png';">
-      <h2>IBS</h2>
+      <h2 style="font-size: 1.1rem; line-height: 1.2;">Borrowing System</h2>
     </div>
     <ul class="nav-links">
       <li class="nav-item active" data-view="dashboard">Dashboard</li>
@@ -22,11 +23,12 @@
       <li class="nav-item" data-view="requests">Requests</li>
       <li class="nav-item" data-view="borrowers">Borrowers</li>
       <li class="nav-item" data-view="system-users">System Users</li>
+      <li class="nav-item" data-view="reports">Reports</li>
       <li class="nav-item" data-view="settings">Settings</li>
     </ul>
     
     <div style="margin-top: auto; padding: 1rem;">
-      <button class="btn btn-outline" id="logout-btn" style="width: 100%; justify-content: center;">Logout</button>
+      <button class="btn btn-primary" id="logout-btn" style="width: 100%; justify-content: center;">Logout</button>
     </div>
   </aside>
 

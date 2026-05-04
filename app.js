@@ -28,6 +28,16 @@ const capitalize = (str) => {
   return str.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
 };
 
+const formatDateStr = (d) => {
+  if (!d) return 'N/A';
+  return String(d).split('T')[0];
+};
+
+const formatDateTimeStr = (d) => {
+  if (!d) return 'N/A';
+  return String(d).replace('T', ' ').substring(0, 16);
+};
+
 // --- Custom Notifications ---
 const showToast = (message, type = 'success') => {
   let container = document.getElementById('toast-container');
@@ -93,6 +103,9 @@ const Storage = {
     return { ...DEFAULT_DATA };
   },
 
+  // Lock to prevent race conditions between saving and auto-loading
+  isSyncing: false,
+
   /**
    * Save data to localStorage + sync to Google Sheets
    */
@@ -104,8 +117,8 @@ const Storage = {
   /**
    * Load data from Google Sheets (restore from cloud)
    */
-  async loadFromCloud() {
-    if (!GOOGLE_SHEET_URL) return null;
+  async loadFromCloud(isAuto = false) {
+    if (!GOOGLE_SHEET_URL || this.isSyncing) return null;
     console.log("Attempting cloud sync...");
     try {
       const response = await fetch(`${GOOGLE_SHEET_URL}?action=getAll&t=${Date.now()}`);
@@ -128,10 +141,19 @@ const Storage = {
           return appData;
         }
 
-        // Deep merge data
         appData.users = Array.isArray(cloudData.users) ? cloudData.users : appData.users;
         appData.items = cloudData.items;
-        appData.records = Array.isArray(cloudData.records) ? cloudData.records : appData.records;
+        
+        // Sanitize records (fix qty corrupted into dates by Google Sheets)
+        appData.records = Array.isArray(cloudData.records) ? cloudData.records.map(r => {
+          if (typeof r.qty === 'string' && r.qty.includes('T')) {
+            r.qty = 1; // Fallback to 1 if Google Sheets interpreted the number as a Date
+          }
+          // Also enforce numeric qty
+          r.qty = parseInt(r.qty) || 1;
+          return r;
+        }) : appData.records;
+
         appData.activity = Array.isArray(cloudData.activity) ? cloudData.activity : appData.activity;
         appData.requests = Array.isArray(cloudData.requests) ? cloudData.requests : appData.requests;
         
@@ -143,7 +165,17 @@ const Storage = {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
         
         const pendingCount = (appData.requests || []).filter(r => r.status === 'pending').length;
-        showToast(pendingCount > 0 ? `Synced! ${pendingCount} requests found.` : 'Cloud Synced', 'success');
+        
+        // Only show toast on manual refresh or if new requests found
+        if (!isAuto) {
+          showToast(pendingCount > 0 ? `Synced! ${pendingCount} requests found.` : 'Cloud Synced', 'success');
+        } else if (pendingCount > 0) {
+          // Check if we already toasted for this count (basic debounce)
+          if (window.lastPendingCount !== pendingCount) {
+             showToast(`New Action Required: ${pendingCount} Pending Requests`, 'warning');
+             window.lastPendingCount = pendingCount;
+          }
+        }
 
         if (typeof switchView === 'function') switchView(currentView);
         return appData;
@@ -171,14 +203,29 @@ const Storage = {
       return;
     }
 
+    this.isSyncing = true;
+
+    // Normalize data so that the first element of each array contains all possible keys
+    // This prevents Google Apps Script jsonToSheet from dropping columns like qty or due_date
+    const normalizeArray = (arr) => {
+      if (!arr || arr.length === 0) return arr;
+      const allKeys = new Set();
+      arr.forEach(item => Object.keys(item).forEach(k => allKeys.add(k)));
+      return arr.map(item => {
+        const normalized = {};
+        allKeys.forEach(k => normalized[k] = item[k] !== undefined ? item[k] : '');
+        return normalized;
+      });
+    };
+
     const payload = {
       action: 'saveAll',
-      users: data.users || [],
-      items: data.items || [],
-      records: data.records || [],
-      activity: (data.activity || []).slice(0, 50),
+      users: normalizeArray(data.users || []),
+      items: normalizeArray(data.items || []),
+      records: normalizeArray(data.records || []),
+      activity: normalizeArray((data.activity || []).slice(0, 50)),
       settings: data.settings || DEFAULT_DATA.settings,
-      requests: data.requests || []
+      requests: normalizeArray(data.requests || [])
     };
 
     try {
@@ -193,6 +240,8 @@ const Storage = {
     } catch (e) {
       console.error("Cloud sync error:", e);
       showToast('Sync connection lost. Check internet.', 'danger');
+    } finally {
+      this.isSyncing = false;
     }
   },
 
@@ -200,6 +249,15 @@ const Storage = {
 
 // --- App State ---
 let appData = Storage.load();
+
+// Sanitize local records (fix qty corrupted into dates)
+if (Array.isArray(appData.records)) {
+  appData.records.forEach(r => {
+    if (typeof r.qty === 'string' && r.qty.includes('T')) r.qty = 1;
+    r.qty = parseInt(r.qty) || 1;
+  });
+}
+
 let currentView = 'dashboard';
 let searchQuery = '';
 
@@ -339,7 +397,7 @@ const renderDashboard = () => {
                       <td style="font-weight: 600;">${name}</td>
                       <td style="color: var(--text-muted);">${itemDisplay}</td>
                       <td style="color: var(--text-muted);">${record.purpose || 'N/A'}</td>
-                      <td>${record.due_date}</td>
+                      <td>${formatDateStr(record.due_date)}</td>
                       <td><span class="badge badge-${statusDisplay === 'returned' ? 'success' : (statusDisplay === 'overdue' ? 'danger' : 'warning')}">${statusDisplay}</span></td>
                       <td><button class="btn btn-soft print-btn" data-id="${record.id}" style="padding: 0.3rem 0.6rem; font-size: 0.7rem; border-radius: 6px;">Print</button></td>
                     </tr>
@@ -423,7 +481,10 @@ const renderInventory = () => {
               <td>${item.total_qty}</td>
               <td>₱${parseFloat(item.damage_cost).toFixed(2)}</td>
               <td>
-                <button class="btn btn-outline edit-item-btn" data-id="${item.id}" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Edit</button>
+                <div style="display: flex; gap: 0.5rem;">
+                  <button class="btn btn-outline edit-item-btn" data-id="${item.id}" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Edit</button>
+                  <button class="btn btn-outline delete-item-btn" data-id="${item.id}" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; color: var(--danger); border-color: var(--danger);">Delete</button>
+                </div>
               </td>
             </tr>
           `).join('') || '<tr><td colspan="6" style="text-align:center;">No items found</td></tr>'}
@@ -494,11 +555,11 @@ const renderInventory = () => {
           <form id="edit-item-form">
             <div class="form-group">
               <label class="form-label">Name</label>
-              <input type="text" class="form-input" name="name" value="${item.name}" required />
+              <input type="text" class="form-input" name="name" value="${(item.name || '').replace(/"/g, '&quot;')}" required />
             </div>
             <div class="form-group">
               <label class="form-label">Category</label>
-              <input type="text" class="form-input" name="category" value="${item.category}" required />
+              <input type="text" class="form-input" name="category" value="${(item.category || '').replace(/"/g, '&quot;')}" required />
             </div>
             <div style="display: flex; gap: 1rem;">
               <div class="form-group" style="flex: 1;">
@@ -522,19 +583,35 @@ const renderInventory = () => {
           const formData = new FormData(e.target);
           
           // Calculate availability difference in case total qty changed
-          const newTotal = parseInt(formData.get('total_qty'));
-          const diff = newTotal - item.total_qty;
+          const newTotal = parseInt(formData.get('total_qty')) || 0;
+          const diff = newTotal - (parseInt(item.total_qty) || 0);
 
-          item.name = formData.get('name');
-          item.category = formData.get('category');
+          item.name = capitalize(formData.get('name'));
+          item.category = capitalize(formData.get('category'));
           item.total_qty = newTotal;
-          item.available_qty = item.available_qty + diff;
-          item.damage_cost = parseFloat(formData.get('damage_cost'));
+          item.available_qty = Math.max(0, (parseInt(item.available_qty) || 0) + diff);
+          item.damage_cost = parseFloat(formData.get('damage_cost')) || 0;
           
           Storage.save(appData);
           hideModal();
           renderInventory();
         };
+      }
+    };
+  });
+
+  // Delete Item Logic
+  document.querySelectorAll('.delete-item-btn').forEach(btn => {
+    btn.onclick = () => {
+      const id = parseInt(btn.dataset.id);
+      const itemIndex = appData.items.findIndex(i => i.id === id);
+      if (itemIndex > -1) {
+        if (confirm('Are you sure you want to delete this item?')) {
+          appData.items.splice(itemIndex, 1);
+          Storage.save(appData);
+          renderInventory();
+          showToast('Item deleted successfully', 'success');
+        }
       }
     };
   });
@@ -909,7 +986,7 @@ const renderTransactions = () => {
             
             if (record.is_batch) {
               itemDisplay = record.batch_records.map(r => `<div>• ${r.item_name}</div>`).join('');
-              qtyDisplay = record.batch_records.map(r => `<div>${r.qty}</div>`).join('');
+              qtyDisplay = record.batch_records.map(r => `<div>${r.qty || 1}</div>`).join('');
               const allReturned = record.batch_records.every(r => r.status === 'returned');
               statusDisplay = allReturned ? 'returned' : 'borrowed';
             }
@@ -921,7 +998,7 @@ const renderTransactions = () => {
                 <td>${itemDisplay}</td>
                 <td>${record.purpose || 'N/A'}</td>
                 <td style="font-weight: 600;">${qtyDisplay}</td>
-                <td>${record.due_date}</td>
+                <td>${formatDateStr(record.due_date)}</td>
                 <td><span class="badge badge-${statusDisplay === 'returned' ? 'success' : (statusDisplay === 'overdue' ? 'danger' : 'warning')}">${statusDisplay}</span></td>
                 <td>
                   <div style="display: flex; gap: 0.5rem;">
@@ -1023,7 +1100,7 @@ const renderTransactions = () => {
             </div>
             <div class="form-group">
               <label class="form-label">Due Date</label>
-              <input type="date" class="form-input" name="due_date" value="${record.due_date}" min="${new Date().toISOString().split('T')[0]}" required />
+              <input type="date" class="form-input" name="due_date" value="${formatDateStr(record.due_date) === 'N/A' ? '' : formatDateStr(record.due_date)}" min="${new Date().toISOString().split('T')[0]}" required />
             </div>
             <div style="display: flex; gap: 1rem; margin-top: 2rem;">
               <button type="button" class="btn btn-outline" style="flex: 1;" onclick="hideModal()">Cancel</button>
@@ -1123,10 +1200,13 @@ const renderTransactions = () => {
         <h2 style="margin-bottom: 1rem;">New Borrow Transaction</h2>
         <form id="borrow-form">
           <div class="form-group">
-            <label class="form-label">Borrower</label>
+            <label class="form-label" style="display: flex; justify-content: space-between;">
+              Borrower
+              <span id="quick-add-borrower" style="color: var(--primary); cursor: pointer; font-size: 0.8rem; font-weight: 600;">+ Quick Add New</span>
+            </label>
             <select class="form-input" name="user_id" id="borrower-select" required>
               <option value="">Select a borrower...</option>
-              ${appData.users.filter(u => u.role === 'borrower').map(u => `<option value="${u.id}">${u.full_name}</option>`).join('')}
+              ${appData.users.filter(u => u.role === 'borrower').sort((a,b) => a.full_name.localeCompare(b.full_name)).map(u => `<option value="${u.id}">${u.full_name}</option>`).join('')}
             </select>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.75rem;">
@@ -1218,6 +1298,38 @@ const renderTransactions = () => {
       // Auto-fill office
       const borrowerSelect = document.getElementById('borrower-select');
       const officeInput = document.getElementById('borrower-office');
+
+      // Quick Add Borrower Logic
+      document.getElementById('quick-add-borrower').onclick = () => {
+        const name = prompt("Enter Borrower's Full Name:");
+        if (!name) return;
+        const office = prompt("Enter Office / Department:");
+        if (!office) return;
+        
+        const newUser = {
+          id: Date.now(),
+          full_name: capitalize(name),
+          username: name.toLowerCase().replace(/\s+/g, ''),
+          email: `${name.toLowerCase().replace(/\s+/g, '')}@system.local`,
+          phone: 'N/A',
+          office: capitalize(office),
+          role: 'borrower',
+          password: 'password123'
+        };
+        
+        appData.users.push(newUser);
+        Storage.save(appData);
+        
+        // Refresh the select list in the current modal
+        const newOption = document.createElement('option');
+        newOption.value = newUser.id;
+        newOption.textContent = newUser.full_name;
+        newOption.selected = true;
+        borrowerSelect.appendChild(newOption);
+        officeInput.value = newUser.office;
+        
+        showToast(`Borrower "${newUser.full_name}" added and selected!`, 'success');
+      };
       borrowerSelect.onchange = (e) => {
         const userId = parseInt(e.target.value);
         const user = appData.users.find(u => u.id === userId);
@@ -1455,7 +1567,7 @@ const renderRequests = () => {
 
             return `
               <tr>
-                <td style="font-size: 0.8rem; color: var(--text-muted);">${req.created_at || 'N/A'}</td>
+                <td style="font-size: 0.8rem; color: var(--text-muted);">${formatDateTimeStr(req.created_at)}</td>
                 <td style="font-weight: 600;">${req.full_name}</td>
                 <td><span class="badge" style="background: var(--primary-soft); color: var(--primary);">${req.office}</span></td>
                 <td style="font-size: 0.85rem;">${itemsList}</td>
@@ -1546,6 +1658,244 @@ const renderRequests = () => {
   });
 };
 
+const renderReports = () => {
+  const mainView = document.getElementById('main-view');
+  
+  // Calculate Reports Metrics
+  const allRecords = appData.records || [];
+  const totalCompleted = allRecords.filter(r => r.status === 'returned').length;
+  const totalActive = allRecords.filter(r => r.status === 'borrowed').length;
+  const totalOverdue = allRecords.filter(r => r.status === 'overdue').length;
+  
+  // Most borrowed item
+  const itemCounts = {};
+  const borrowerCounts = {};
+  const officeCounts = {};
+
+  allRecords.forEach(r => {
+    // Item counts
+    itemCounts[r.item_name] = (itemCounts[r.item_name] || 0) + (r.qty || 1);
+    
+    // Borrower counts (get realtime name from users list if possible)
+    const user = appData.users.find(u => u.id === r.user_id);
+    const name = user ? user.full_name : (r.user_name || 'Unknown');
+    borrowerCounts[name] = (borrowerCounts[name] || 0) + 1;
+    
+    // Office counts
+    const office = user ? (user.office || 'Unknown') : (r.office || 'Unknown');
+    officeCounts[office] = (officeCounts[office] || 0) + 1;
+  });
+
+  const topItemEntry = Object.entries(itemCounts).sort((a, b) => b[1] - a[1])[0];
+  const topItemName = topItemEntry ? topItemEntry[0] : 'N/A';
+  const topItemCount = topItemEntry ? topItemEntry[1] : 0;
+
+  // Filter records by search query
+  const filteredRecords = allRecords.filter(r => {
+    const user = appData.users.find(u => u.id === r.user_id);
+    const name = user ? user.full_name : (r.user_name || '');
+    return (r.item_name && r.item_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+           (name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+           (r.status && r.status.toLowerCase().includes(searchQuery.toLowerCase()));
+  }).sort((a, b) => new Date(b.date_borrowed) - new Date(a.date_borrowed));
+
+  mainView.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <h1 style="font-size: 2rem; font-weight: 800;">System Reports</h1>
+      <button class="btn btn-primary" onclick="window.print()">
+        <span style="font-size: 1.2rem;">🖨️</span> Print Report
+      </button>
+    </div>
+
+
+
+    <!-- Charts Section -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+      <div class="activity-panel">
+        <h3 class="section-title">Status Distribution</h3>
+        <div style="height: 200px; position: relative;">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
+      <div class="activity-panel">
+        <h3 class="section-title">Top 5 Items</h3>
+        <div style="height: 200px; position: relative;">
+          <canvas id="itemsChart"></canvas>
+        </div>
+      </div>
+      <div class="activity-panel">
+        <h3 class="section-title">Top 5 Borrowers</h3>
+        <div style="height: 200px; position: relative;">
+          <canvas id="borrowersChart"></canvas>
+        </div>
+      </div>
+      <div class="activity-panel">
+        <h3 class="section-title">Top 5 Offices</h3>
+        <div style="height: 200px; position: relative;">
+          <canvas id="officesChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Historical Transactions Log</div>
+    <div class="table-container printable-report-table">
+      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <thead style="background: var(--background);">
+          <tr>
+            <th style="padding: 1rem; border-bottom: 2px solid var(--border);">Date</th>
+            <th style="padding: 1rem; border-bottom: 2px solid var(--border);">Borrower</th>
+            <th style="padding: 1rem; border-bottom: 2px solid var(--border);">Item</th>
+            <th style="padding: 1rem; border-bottom: 2px solid var(--border);">Qty</th>
+            <th style="padding: 1rem; border-bottom: 2px solid var(--border);">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredRecords.map(r => `
+            <tr>
+              <td style="padding: 1rem; border-bottom: 1px solid var(--border);">${formatDateStr(r.date_borrowed)}</td>
+              <td style="padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 500;">${r.borrower_name}</td>
+              <td style="padding: 1rem; border-bottom: 1px solid var(--border);">${r.item_name}</td>
+              <td style="padding: 1rem; border-bottom: 1px solid var(--border);">${r.qty || 1}</td>
+              <td style="padding: 1rem; border-bottom: 1px solid var(--border);">
+                <span class="badge badge-${r.status === 'borrowed' ? 'warning' : r.status === 'returned' ? 'success' : 'danger'}">
+                  ${r.status}
+                </span>
+              </td>
+            </tr>
+          `).join('') || '<tr><td colspan="5" style="text-align: center; padding: 1rem;">No records found matching search.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Initialize Charts
+  setTimeout(() => {
+    if (typeof Chart === 'undefined') {
+      console.warn('Chart.js not loaded yet');
+      return;
+    }
+    // 1. Status Distribution Chart
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    new Chart(statusCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Returned', 'Borrowed', 'Overdue'],
+        datasets: [{
+          data: [totalCompleted, totalActive, totalOverdue],
+          backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+        }
+      }
+    });
+
+    // 2. Top Items Chart
+    const itemsCtx = document.getElementById('itemsChart').getContext('2d');
+    const sortedItems = Object.entries(itemCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    
+    new Chart(itemsCtx, {
+      type: 'bar',
+      data: {
+        labels: sortedItems.map(i => i[0].length > 15 ? i[0].substring(0, 12) + '...' : i[0]),
+        datasets: [{
+          label: 'Quantity',
+          data: sortedItems.map(i => i[1]),
+          backgroundColor: '#2e7d32',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          x: { beginAtZero: true, grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
+
+    // 3. Top Borrowers Chart
+    const borrowersCtx = document.getElementById('borrowersChart').getContext('2d');
+    const sortedBorrowers = Object.entries(borrowerCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    
+    new Chart(borrowersCtx, {
+      type: 'bar',
+      data: {
+        labels: sortedBorrowers.map(b => b[0].length > 12 ? b[0].substring(0, 10) + '...' : b[0]),
+        datasets: [{
+          label: 'Transactions',
+          data: sortedBorrowers.map(b => b[1]),
+          backgroundColor: 'rgba(25, 118, 210, 0.6)',
+          borderColor: '#1976d2',
+          borderWidth: 1,
+          barPercentage: 1.0,
+          categoryPercentage: 1.0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
+          y: { beginAtZero: true, grid: { display: false }, ticks: { font: { size: 9 } } }
+        }
+      }
+    });
+
+    // 4. Top Offices Chart
+    const officesCtx = document.getElementById('officesChart').getContext('2d');
+    const sortedOffices = Object.entries(officeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    
+    new Chart(officesCtx, {
+      type: 'line',
+      data: {
+        labels: sortedOffices.map(o => o[0].length > 12 ? o[0].substring(0, 10) + '...' : o[0]),
+        datasets: [{
+          label: 'Transactions',
+          data: sortedOffices.map(o => o[1]),
+          borderColor: '#9c27b0',
+          backgroundColor: 'rgba(156, 39, 176, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 5,
+          pointBackgroundColor: '#9c27b0',
+          borderWidth: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
+          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 9 } } }
+        }
+      }
+    });
+  }, 100);
+};
+
 const switchView = (view) => {
   currentView = view;
   const navItems = document.querySelectorAll('.nav-item[data-view]');
@@ -1562,6 +1912,7 @@ const switchView = (view) => {
     case 'system-users': renderSystemUsers(); break;
     case 'transactions': renderTransactions(); break;
     case 'requests': renderRequests(); break;
+    case 'reports': renderReports(); break;
     case 'settings': renderSettings(); break;
     default: mainView.innerHTML = `<h1>View ${view} coming soon...</h1>`;
   }
@@ -1584,10 +1935,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Try to restore from cloud on startup
   Storage.loadFromCloud();
 
-  // Real-time Auto-refresh (Every 15 seconds)
+  // Real-time Auto-refresh (Every 5 seconds)
   setInterval(() => {
-    Storage.loadFromCloud();
-  }, 15000);
+    Storage.loadFromCloud(true);
+  }, 5000);
 
   const navItems = document.querySelectorAll('.nav-item[data-view]');
   const modalOverlay = document.getElementById('modal-overlay');
@@ -1731,9 +2082,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <tr>
                             <td style="font-weight: bold;">${r.qty || 1}</td>
                             <td style="text-align: left; padding-left: 5px;">${r.item_name}</td>
-                            <td>${r.borrow_date}</td>
-                            <td>${r.due_date}</td>
-                            <td>${r.return_date || ''}</td>
+                            <td>${formatDateStr(r.borrow_date)}</td>
+                            <td>${formatDateStr(r.due_date)}</td>
+                            <td>${r.return_date ? formatDateStr(r.return_date) : ''}</td>
                             <td></td>
                             <td style="text-align: left; padding-left: 5px;">${r.purpose || 'N/A'}</td>
                         </tr>
@@ -1840,9 +2191,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Run immediately on load, then every 10 seconds
+  // Run immediately on load, then every 5 seconds
   checkOverdueItems();
-  setInterval(checkOverdueItems, 10000);
+  setInterval(checkOverdueItems, 5000);
 
   console.log('Borrowing System Loaded', appData);
 });

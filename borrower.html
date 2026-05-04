@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Request Item - IBS</title>
+    <title>Request Item - Borrowing System</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -208,7 +208,8 @@
                 document.getElementById('form-container').style.display = 'none';
                 document.getElementById('success-message').style.display = 'block';
             } catch (err) {
-                alert("Error submitting request. Please try again.");
+                console.error("Submission error:", err);
+                alert("Error submitting request. Please check your internet or ensure the script URL is correct.");
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
