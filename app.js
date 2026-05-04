@@ -141,52 +141,66 @@ const Storage = {
           return appData;
         }
 
-        appData.users = Array.isArray(cloudData.users) ? cloudData.users : appData.users;
-        appData.items = cloudData.items;
+        // Align Users
+        const cloudUsers = cloudData.users || cloudData.Users || cloudData.Borrowers;
+        appData.users = Array.isArray(cloudUsers) ? cloudUsers : appData.users;
+
+        // Align Items / Inventory
+        const cloudItems = cloudData.items || cloudData.Items || cloudData.inventory || cloudData.Inventory;
+        appData.items = Array.isArray(cloudItems) ? cloudItems : appData.items;
         
-        // Sanitize records (fix qty corrupted into dates by Google Sheets)
-        appData.records = Array.isArray(cloudData.records) ? cloudData.records.map(r => {
-          if (typeof r.qty === 'string' && r.qty.includes('T')) {
-            r.qty = 1; // Fallback to 1 if Google Sheets interpreted the number as a Date
-          }
-          // Also enforce numeric qty
+        // Align Records / Transactions (Transactions Log)
+        const cloudRecords = cloudData.records || cloudData.Records || cloudData.transactions || cloudData.Transactions;
+        appData.records = Array.isArray(cloudRecords) ? cloudRecords.map(r => {
+          // Robust field alignment
           r.qty = parseInt(r.qty) || 1;
+          r.user_id = parseInt(r.user_id) || r.user_id;
+          r.item_id = parseInt(r.item_id) || r.item_id;
+          // Support both 'user_name' and 'borrower_name'
+          if (!r.user_name && r.borrower_name) r.user_name = r.borrower_name;
           return r;
         }) : appData.records;
 
         appData.activity = Array.isArray(cloudData.activity) ? cloudData.activity : appData.activity;
-        appData.requests = Array.isArray(cloudData.requests) ? cloudData.requests : appData.requests;
+        
+        // Align Requests (Pending Requests from Mobile Form)
+        const cloudRequests = cloudData.requests || cloudData.Requests || cloudData.pending_requests;
+        appData.requests = Array.isArray(cloudRequests) ? cloudRequests.map(req => {
+          // Fallbacks for common mobile form field names
+          if (!req.full_name && req.name) req.full_name = req.name;
+          if (!req.office && req.department) req.office = req.department;
+          return req;
+        }) : appData.requests;
         
         if (cloudData.settings) {
           appData.settings = Array.isArray(cloudData.settings) ? cloudData.settings[0] : cloudData.settings;
         }
 
         window.hasLoadedFromCloud = true;
+        window.lastSyncTime = new Date(); // Track successful sync
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
         
-        const pendingCount = (appData.requests || []).filter(r => r.status === 'pending').length;
+        const pendingCount = (appData.requests || []).filter(r => (r.status || '').toLowerCase() === 'pending').length;
         
-        // Only show toast on manual refresh or if new requests found
         if (!isAuto) {
           showToast(pendingCount > 0 ? `Synced! ${pendingCount} requests found.` : 'Cloud Synced', 'success');
-        } else if (pendingCount > 0) {
-          // Check if we already toasted for this count (basic debounce)
-          if (window.lastPendingCount !== pendingCount) {
-             showToast(`New Action Required: ${pendingCount} Pending Requests`, 'warning');
-             window.lastPendingCount = pendingCount;
-          }
+        } else if (pendingCount > 0 && window.lastPendingCount !== pendingCount) {
+          showToast(`New Action Required: ${pendingCount} Pending Requests`, 'warning');
+          window.lastPendingCount = pendingCount;
         }
 
         if (typeof switchView === 'function') switchView(currentView);
         return appData;
       } else {
         console.error("Cloud error:", result.error);
+        if (!isAuto) showToast('Cloud error: ' + (result.error || 'Unknown'), 'danger');
         return null;
       }
     } catch (e) {
       console.error('Cloud load failed:', e);
-      // Only show error toast occasionally or if it's the first load
-      if (!window.hasLoadedFromCloud) showToast('Cloud connection failed. Check internet.', 'danger');
+      if (!isAuto || !window.hasLoadedFromCloud) {
+        showToast('Cloud connection failed. Check internet.', 'danger');
+      }
       return null;
     }
   },
@@ -267,7 +281,7 @@ const renderDashboard = () => {
   const activeBorrows = appData.records.filter(r => r.status === 'borrowed').length;
   const totalItems = appData.items.length;
   const overdueItems = appData.records.filter(r => r.status === 'overdue').length;
-  const pendingRequests = (appData.requests || []).filter(req => req.status === 'pending').length;
+  const pendingRequests = (appData.requests || []).filter(req => (req.status || '').toLowerCase() === 'pending').length;
 
   // Calculate Top Office
   const officeCounts = {};
@@ -283,7 +297,12 @@ const renderDashboard = () => {
   const activePercent = totalItems > 0 ? Math.round((activeBorrows / totalItems) * 100) : 0;
 
   mainView.innerHTML = `
-    <h1 style="font-size: 1.75rem; font-weight: 800; margin-bottom: 2rem;">System Overview</h1>
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2rem;">
+      <h1 style="font-size: 1.75rem; font-weight: 800; margin-bottom: 0;">System Overview</h1>
+      <span style="font-size: 0.75rem; color: var(--text-muted);">
+        Last Synced: ${window.lastSyncTime ? window.lastSyncTime.toLocaleTimeString() : 'Pending...'}
+      </span>
+    </div>
 
     <div class="dashboard-grid">
       <div class="main-stats">
@@ -1553,10 +1572,10 @@ const renderRequests = () => {
           </tr>
         </thead>
         <tbody>
-          ${(appData.requests || []).filter(req => req.status === 'pending').sort((a,b) => b.id > a.id ? -1 : 1).map(req => {
+          ${(appData.requests || []).filter(req => (req.status || '').toLowerCase() === 'pending').sort((a,b) => b.id > a.id ? -1 : 1).map(req => {
             let itemsList = req.items || '';
             try {
-              const parsed = JSON.parse(req.items);
+              const parsed = typeof req.items === 'string' ? JSON.parse(req.items) : req.items;
               if (Array.isArray(parsed)) {
                 itemsList = parsed.map(i => `• ${i.name} (${i.qty})`).join('<br>');
               }
