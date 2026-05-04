@@ -341,7 +341,7 @@ const renderDashboard = () => {
                 // Sorting and Filtering
                 const sorted = appData.records.slice().sort((a, b) => b.id - a.id);
                 const filtered = sorted.filter(r => {
-                  const user = appData.users.find(u => u.id === r.user_id);
+                  const user = appData.users.find(u => u.id.toString() === r.user_id.toString());
                   const name = user ? user.full_name : (r.user_name || 'Unknown');
                   const item = r.item_name || 'Item';
                   const status = r.status || '';
@@ -366,7 +366,7 @@ const renderDashboard = () => {
                 });
 
                 return grouped.slice(0, 8).map(record => {
-                  const user = appData.users.find(u => u.id === record.user_id);
+                  const user = appData.users.find(u => u.id.toString() === record.user_id.toString());
                   const name = user ? user.full_name : (record.user_name || 'Unknown');
                   
                   let itemDisplay = record.item_name;
@@ -407,8 +407,8 @@ const renderDashboard = () => {
   // Handle Print on Dashboard
   document.querySelectorAll('.print-btn').forEach(btn => {
     btn.onclick = () => {
-      const id = parseInt(btn.dataset.id);
-      const record = appData.records.find(r => r.id === id);
+      const id = btn.dataset.id;
+      const record = appData.records.find(r => r.id.toString() === id.toString());
       if (record) handlePrint(record);
     };
   });
@@ -1617,29 +1617,35 @@ const renderRequests = () => {
   document.querySelectorAll('.approve-request-btn').forEach(btn => {
     btn.onclick = () => {
       const id = btn.dataset.id;
-      const req = appData.requests.find(r => r.id.toString() === id.toString());
-      if (!req) return;
+      const req = appData.requests.find(r => (r.id || '').toString() === id.toString());
+      if (!req) {
+        showToast('Request data lost. Please refresh.', 'danger');
+        return;
+      }
 
-      // Align with Borrowers List
+      // Map to Borrower
       const borrower = appData.users.find(u => u.full_name.toLowerCase() === req.full_name.toLowerCase());
-      const userId = borrower ? borrower.id : 0; // Use existing ID or 0 for guest
+      const userId = borrower ? borrower.id : ("GUEST_" + Date.now());
       
       const reqItems = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []);
       const batchId = Date.now();
       
-      // Check stock first
+      // Validate All Items Exist and have Stock
       for (const reqI of reqItems) {
-        // Support matching by ID or Name
-        const item = appData.items.find(i => i.id.toString() === (reqI.id || '').toString() || i.name === reqI.name);
-        if (!item || item.available_qty < reqI.qty) {
-          showToast(`Stock unavailable for ${reqI.name}`, 'danger');
+        const item = appData.items.find(i => (i.id || '').toString() === (reqI.id || '').toString() || i.name.toLowerCase() === reqI.name.toLowerCase());
+        if (!item) {
+          showToast(`Error: Item "${reqI.name}" not found in Inventory.`, 'danger');
+          return;
+        }
+        if (item.available_qty < reqI.qty) {
+          showToast(`Stock Alert: Only ${item.available_qty} left for ${item.name}.`, 'warning');
           return;
         }
       }
 
-      // Convert Request to Records
+      // Process the Borrowing
       reqItems.forEach(reqI => {
-        const item = appData.items.find(i => i.id.toString() === (reqI.id || '').toString() || i.name === reqI.name);
+        const item = appData.items.find(i => (i.id || '').toString() === (reqI.id || '').toString() || i.name.toLowerCase() === reqI.name.toLowerCase());
         const record = {
           id: Date.now() + Math.random(),
           batch_id: batchId,
@@ -1650,28 +1656,27 @@ const renderRequests = () => {
           qty: reqI.qty,
           office: borrower ? (borrower.office || req.office) : req.office,
           borrow_date: new Date().toISOString().split('T')[0],
-          due_date: req.due_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0], // Default 7 days
+          due_date: req.due_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
           status: 'borrowed',
-          purpose: req.purpose,
+          purpose: req.purpose || 'N/A',
           user_phone: borrower ? borrower.phone : (req.phone || '')
         };
-        item.available_qty -= reqI.qty;
+        
+        item.available_qty = Math.max(0, item.available_qty - reqI.qty);
         appData.records.push(record);
       });
 
-      // Update Request status
+      // Update Status and Save
       req.status = 'approved';
-      
-      // Log
       appData.activity.unshift({
         id: Date.now(),
-        text: `<b>${req.full_name}</b> request approved for ${reqItems.length} items`,
+        text: `✅ <b>${req.full_name}</b> approved for ${reqItems.length} items`,
         time: 'Just now'
       });
 
       Storage.save(appData);
       renderRequests();
-      showToast('Request approved!', 'success');
+      showToast('Approval successful!', 'success');
     };
   });
 
