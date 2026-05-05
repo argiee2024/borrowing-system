@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbz2PLC-jPjCm2yJyoJuwI3jaZx-DjVVpo3zpoj74qpkC6iDYivexNDLlTHlguZDe6gy/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbV-HePn_vjMrpAy4FDqi3UEGEGXDqeFcE1gEm5Y0u1JxQ8u_PDmp2TYhncGnVV73z7/exec';
 
 const Storage = {
   /**
@@ -497,7 +497,7 @@ const renderInventory = () => {
             <tr>
               <td style="font-weight: 600;">${item.name}</td>
               <td>${item.category}</td>
-              <td>${item.available_qty}</td>
+              <td class="${parseInt(item.available_qty) <= 2 ? 'stock-alert-infinite' : ''}" style="text-align: center;">${item.available_qty}</td>
               <td>${item.total_qty}</td>
               <td>₱${parseFloat(item.damage_cost).toFixed(2)}</td>
               <td>
@@ -1677,8 +1677,12 @@ const renderRequests = () => {
           showToast(`Error: Item "${reqI.name}" not found in Inventory.`, 'danger');
           return;
         }
-        if (item.available_qty < reqI.qty) {
-          showToast(`Stock Alert: Only ${item.available_qty} left for ${item.name}.`, 'warning');
+        
+        const avail = parseInt(item.available_qty) || 0;
+        const requested = parseInt(reqI.qty) || 0;
+
+        if (avail < requested) {
+          showToast(`Stock Alert: Only ${avail} left for ${item.name}.`, 'warning');
           return;
         }
       }
@@ -1702,7 +1706,7 @@ const renderRequests = () => {
           user_phone: borrower ? borrower.phone : (req.phone || '')
         };
         
-        item.available_qty = Math.max(0, item.available_qty - reqI.qty);
+        item.available_qty = Math.max(0, (parseInt(item.available_qty) || 0) - (parseInt(reqI.qty) || 0));
         appData.records.push(record);
       });
 
