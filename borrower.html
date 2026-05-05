@@ -142,7 +142,7 @@
 
     <script>
         // MUST MATCH YOUR APPS SCRIPT URL
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxxyrD8WoCg8BTHumxIPhxnxZg_G5BmHlBoDrWzjYWHnOJtKZec-viQcddm2Ddeng4n/exec';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbd6mMlRzWdbJCkAeij0S-Evlokt5BQf8q41mHKls7I3Vtp4AqZVqROKtM0NsQoREJ/exec';
         
         let inventory = [];
         let rowCount = 1;
@@ -221,7 +221,7 @@
             }
 
             const payload = {
-                action: 'submitRequest',
+                action: 'saveRequest',
                 full_name: formData.get('full_name'),
                 office: formData.get('office'),
                 purpose: formData.get('purpose'),
@@ -230,13 +230,12 @@
             };
 
             try {
-                // We use GET params to bypass CORS preflight if needed, or POST with no-cors
-                // URLSearchParams is the most reliable "handshake" method for GAS
-                const queryParams = new URLSearchParams(payload).toString();
-                
-                await fetch(SCRIPT_URL + '?' + queryParams, {
+                // Send as JSON body for consistency with Admin dashboard
+                await fetch(SCRIPT_URL, {
                     method: 'POST',
-                    mode: 'no-cors'
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(payload)
                 });
 
                 document.getElementById('form-container').style.display = 'none';

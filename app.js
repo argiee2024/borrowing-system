@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyCAESVEZuMap1rh9qhwbYP8QjgeT0V95rZn_UA4w5MoDPlldHInDDEYRu0xDuSZthj/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxbd6mMlRzWdbJCkAeij0S-Evlokt5BQf8q41mHKls7I3Vtp4AqZVqROKtM0NsQoREJ/exec';
 
 const Storage = {
   /**
@@ -110,15 +110,24 @@ const Storage = {
    * Save data to localStorage + sync to Google Sheets
    */
   save(data) {
+    this.lastSaveTime = Date.now(); // Track last local change
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     this.syncToCloud(data);
   },
+
+  lastSaveTime: 0,
 
   /**
    * Load data from Google Sheets (restore from cloud)
    */
   async loadFromCloud(isAuto = false) {
     if (!GOOGLE_SHEET_URL || this.isSyncing) return null;
+    
+    // Cooldown: Don't auto-refresh if we just saved data in the last 15 seconds
+    if (isAuto && (Date.now() - this.lastSaveTime < 15000)) {
+      console.log("Auto-refresh skipped: Recently saved local changes.");
+      return null;
+    }
     
     return new Promise((resolve) => {
       console.log("Attempting Tunnel Sync (JSONP)...");
@@ -210,11 +219,12 @@ const Storage = {
     };
 
     try {
-      // Using 'no-cors' for Google Apps Script POST
+      // Using 'text/plain' to avoid CORS preflight while sending JSON
+      // This is the most reliable way to POST to Google Apps Script
       await fetch(GOOGLE_SHEET_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
       console.log("Cloud sync sent successfully.");
@@ -2010,10 +2020,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Try to restore from cloud on startup
   Storage.loadFromCloud();
 
-  // Real-time Auto-refresh (Every 5 seconds)
+  // Real-time Auto-refresh (Every 30 seconds)
   setInterval(() => {
     Storage.loadFromCloud(true);
-  }, 5000);
+  }, 30000);
 
   const navItems = document.querySelectorAll('.nav-item[data-view]');
   const modalOverlay = document.getElementById('modal-overlay');
