@@ -1500,16 +1500,16 @@ const renderSettings = () => {
     </div>
 
     <!-- Cloud Debugger Panel -->
-    <div class="card" style="max-width: 600px; margin-top: 2rem; border: 1px solid #ffcc00; background: #fffcf0;">
-      <h3 style="margin-bottom: 0.5rem; color: #856404;">🛠️ Cloud Debugger</h3>
-      <p style="margin-bottom: 1rem; color: #856404; font-size: 0.8rem;">Use this to verify if the server is actually sending requests back to the dashboard.</p>
+    <div class="card" style="max-width: 600px; margin-top: 2rem; border: 1px solid var(--warning); background: var(--surface);">
+      <h3 style="margin-bottom: 0.5rem; color: var(--warning);">🛠️ Cloud Debugger</h3>
+      <p style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.8rem;">Use this to verify if the server is actually sending requests back to the dashboard.</p>
       
-      <div style="text-align: left;">
-        <label class="form-label" style="color: #856404;">Last Raw Server Response:</label>
-        <pre id="debug-json" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; font-size: 0.7rem; overflow-x: auto; max-height: 200px; border: 1px solid #ddd;">
+      <div class="form-group">
+        <label class="form-label" style="color: var(--warning);">Last Raw Server Response:</label>
+        <pre id="debug-json" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; font-size: 0.7rem; overflow-x: auto; max-height: 200px; border: 1px solid var(--border);">
 ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2).substring(0, 500) + '...' : 'No data received yet. Click refresh on dashboard.'}
         </pre>
-        <button class="btn btn-primary" style="margin-top: 1rem; background: #856404; border: none; width: 100%;" onclick="Storage.loadFromCloud()">Force Deep Sync</button>
+        <button class="btn btn-primary" style="margin-top: 1rem; background: var(--warning); border: none; width: 100%;" onclick="Storage.loadFromCloud()">Force Deep Sync</button>
       </div>
     </div>
   `;
@@ -2076,27 +2076,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (topDebugBtn) {
     topDebugBtn.onclick = () => {
       showModal(`
-        <h2 style="margin-bottom: 1rem; color: #856404;">🔧 Database Debugger</h2>
+        <h2 style="margin-bottom: 1rem; color: var(--warning);">🔧 Database Debugger</h2>
         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">This shows exactly what your Google Sheet is sending to the dashboard right now.</p>
         
-        <div style="text-align: left;">
-          <label style="font-weight: bold; font-size: 0.8rem;">Raw JSON Response:</label>
-          <pre style="background: #f8f9fa; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.7rem; overflow: auto; max-height: 300px; margin-top: 0.5rem;">
-${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No data fetched yet. Please refresh or wait 5 seconds.'}
+        <div style="background: var(--background); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border);">
+          <label style="font-weight: bold; font-size: 0.8rem; color: var(--text); display: block; margin-bottom: 0.5rem;">Raw appData JSON:</label>
+          <pre style="background: var(--surface); color: var(--text); padding: 1rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.7rem; overflow: auto; max-height: 300px; margin-top: 0.5rem;">
+            ${JSON.stringify(appData, null, 2)}
           </pre>
         </div>
-        
-        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #ddd;">
+
+        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
           <label style="font-weight: bold; font-size: 0.8rem; color: var(--danger);">⚠️ Manual Data Import (If Sync Fails):</label>
-          <textarea id="manual-data-input" placeholder="Paste the text from your Google Script tab here..." style="width: 100%; height: 60px; font-size: 0.7rem; margin-top: 0.5rem; border-radius: 6px; border: 1px solid #ddd; padding: 0.5rem;"></textarea>
-          <button class="btn btn-primary" style="margin-top: 0.5rem; width: 100%; font-size: 0.8rem;" onclick="
-            try {
-              const data = JSON.parse(document.getElementById('manual-data-input').value);
-              if (data.data) {
-                appData = {...appData, ...data.data};
-                Storage.save(appData);
-                hideModal();
-                switchView(currentView);
                 showToast('Data imported manually!', 'success');
               } else {
                 alert('Invalid data format. Please copy everything from the Google Script tab.');
