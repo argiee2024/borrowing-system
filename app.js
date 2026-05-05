@@ -1663,10 +1663,14 @@ const renderRequests = () => {
       let reqItems = [];
       try {
         reqItems = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []);
+        if (!Array.isArray(reqItems)) reqItems = [reqItems];
       } catch (e) {
-        showToast('Error: This request has invalid item data and cannot be processed automatically.', 'danger');
-        console.error("Parse error on approval", e);
-        return;
+        // Fallback for plain text names (e.g. "Koko")
+        reqItems = [{
+          name: String(req.items || 'Unknown Item').trim(),
+          qty: 1,
+          id: ''
+        }];
       }
       const batchId = Date.now();
       
@@ -2371,9 +2375,31 @@ ${window.lastRawResponse ? JSON.stringify(window.lastRawResponse, null, 2) : 'No
     }
   };
 
-  // Run immediately on load, then every 5 seconds
+  // --- Theme Toggle Logic ---
+  const themeToggle = document.getElementById('theme-toggle');
+  const themeIcon = document.getElementById('theme-icon');
+  
+  const setTheme = (theme) => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('borrowSys_theme', theme);
+    themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+  };
+
+  // Initialize theme from storage
+  const savedTheme = localStorage.getItem('borrowSys_theme') || 'light';
+  setTheme(savedTheme);
+
+  if (themeToggle) {
+    themeToggle.onclick = () => {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    };
+  }
+
+  // Check overdue items immediately on load
   checkOverdueItems();
-  setInterval(checkOverdueItems, 5000);
+  // Check every hour
+  setInterval(checkOverdueItems, 3600000);
 
   console.log('Borrowing System Loaded', appData);
 });
