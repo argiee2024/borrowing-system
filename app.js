@@ -78,7 +78,7 @@ const showConfirm = (message, onConfirm) => {
 };
 // --- Google Sheets Database URL ---
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL
-const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxbd6mMlRzWdbJCkAeij0S-Evlokt5BQf8q41mHKls7I3Vtp4AqZVqROKtM0NsQoREJ/exec';
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbz2PLC-jPjCm2yJyoJuwI3jaZx-DjVVpo3zpoj74qpkC6iDYivexNDLlTHlguZDe6gy/exec';
 
 const Storage = {
   /**
@@ -147,7 +147,29 @@ const Storage = {
           });
         }
         if (Array.isArray(cloudData.requests)) {
-          appData.requests = cloudData.requests.map(req => {
+          // Merge logic: Preserve local approved/declined status if cloud is still pending
+          const mergedRequests = [...appData.requests];
+          
+          cloudData.requests.forEach(cloudReq => {
+            const existingIdx = mergedRequests.findIndex(r => (r.id || '').toString() === (cloudReq.id || '').toString());
+            
+            if (existingIdx > -1) {
+              const localReq = mergedRequests[existingIdx];
+              // If local is already processed but cloud is still pending, keep local status
+              if (localReq.status !== 'pending' && cloudReq.status === 'pending') {
+                console.log(`Preserving local status (${localReq.status}) for request ${localReq.id}`);
+                // Just update other fields from cloud but keep status
+                const status = localReq.status;
+                mergedRequests[existingIdx] = { ...cloudReq, ...localReq, status };
+              } else {
+                mergedRequests[existingIdx] = { ...cloudReq };
+              }
+            } else {
+              mergedRequests.push(cloudReq);
+            }
+          });
+          
+          appData.requests = mergedRequests.map(req => {
             if (!req.full_name && req.name) req.full_name = req.name;
             if (!req.office && req.department) req.office = req.department;
             return req;
@@ -219,15 +241,17 @@ const Storage = {
     };
 
     try {
-      // Using 'text/plain' to avoid CORS preflight while sending JSON
-      // This is the most reliable way to POST to Google Apps Script
+      // Using form-encoded data with a 'data' parameter is the MOST reliable way to POST to GAS
+      const formData = new URLSearchParams();
+      formData.append('data', JSON.stringify(payload));
+
       await fetch(GOOGLE_SHEET_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString()
       });
-      console.log("Cloud sync sent successfully.");
+      console.log("Cloud sync sent successfully (Form-encoded).");
     } catch (e) {
       console.error("Cloud sync error:", e);
       showToast('Sync connection lost. Check internet.', 'danger');
@@ -1636,7 +1660,14 @@ const renderRequests = () => {
       const borrower = appData.users.find(u => u.full_name.toLowerCase() === req.full_name.toLowerCase());
       const userId = borrower ? borrower.id : ("GUEST_" + Date.now());
       
-      const reqItems = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []);
+      let reqItems = [];
+      try {
+        reqItems = typeof req.items === 'string' ? JSON.parse(req.items || '[]') : (req.items || []);
+      } catch (e) {
+        showToast('Error: This request has invalid item data and cannot be processed automatically.', 'danger');
+        console.error("Parse error on approval", e);
+        return;
+      }
       const batchId = Date.now();
       
       // Validate All Items Exist and have Stock
